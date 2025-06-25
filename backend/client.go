@@ -1,8 +1,9 @@
 package backend
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/segmentio/ksuid"
@@ -14,7 +15,7 @@ type Client struct {
 	id      string
 	conn    *websocket.Conn
 	manager *Manager
-	msgPool chan []byte
+	msgPool chan IncommingMessage
 }
 
 func NewClient(conn *websocket.Conn, manager *Manager) *Client {
@@ -23,7 +24,7 @@ func NewClient(conn *websocket.Conn, manager *Manager) *Client {
 		id:      id,
 		conn:    conn,
 		manager: manager,
-		msgPool: make(chan []byte, 1024), // BUFFER SIZE 1024 bytes
+		msgPool: make(chan IncommingMessage, 1024), // BUFFER SIZE 1024 bytes
 	}
 }
 
@@ -33,44 +34,74 @@ func (c *Client) ReadMsg() {
 	}()
 
 	for {
-		_, msg, err := c.conn.ReadMessage()
+		_, payload, err := c.conn.ReadMessage()
 		if err != nil {
 			log.Println(err)
 			break
 		}
-		select {
-		case c.msgPool <- msg:
-			log.Println("new message: ", string(msg))
-		default:
-			log.Println("buf size full")
+
+		var message IncommingMessage
+		if err := json.Unmarshal(payload, &message); err != nil {
+			log.Println("error marshaling message", err)
+			continue
 		}
-	}
-}
+		message.SenderId = c.id
 
-func (c *Client) ReadMsgForClient(id string, msg string) error {
-	client := c.manager.clients[id]
-	if client == nil {
-		log.Println("user not found")
-		return fmt.Errorf("user not found")
-	}
+		switch message.MsgType {
+		case TYPE_CHAT:
+			receiverClient, ok := c.manager.clients[message.ReceiverId]
+			if !ok {
+				log.Println("user not found")
+			}
 
-	messageBuf := []byte(msg)
-	select {
-	case client.msgPool <- messageBuf:
-		log.Println("incoming message")
-		return nil
-	default:
-		log.Println("something wrong")
-		return fmt.Errorf("buf size full")
+			select {
+			case receiverClient.msgPool <- message:
+				log.Println("new message: ")
+			default:
+				log.Println("buf size full")
+			}
+			receiverClient.msgPool <- message
+		case TYPE_LIST:
+			list, _ := json.Marshal(c.manager.clients)
+			message.Payload = list
+
+			select {
+			case c.msgPool <- message:
+				log.Println("new message: ")
+			default:
+				log.Println("buf size full")
+			}
+		case TYPE_ALIVE:
+			waitTime := 30 * time.Second
+			c.conn.SetReadDeadline(time.Now().Add(waitTime))
+		}
+
 	}
 }
 
 func (c *Client) WriteMsg() {
+	ticker := time.NewTicker(10 * time.Second)
 	defer func() {
+		ticker.Stop()
 		c.manager.removeClient(c)
 	}()
+	for {
+		select {
+		case msg := <-c.msgPool:
+			outgoingMessage := &OutgoingMessage{
+				MsgType:  msg.MsgType,
+				SenderId: msg.SenderId,
+				Payload:  msg.Payload,
+			}
 
-	for msg := range c.msgPool {
-		log.Println(string(msg))
+			if err := c.conn.WriteJSON(outgoingMessage); err != nil {
+				log.Println(err)
+			}
+		case <-ticker.C:
+			if err := c.conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
+				log.Println(err)
+				return
+			}
+		}
 	}
 }

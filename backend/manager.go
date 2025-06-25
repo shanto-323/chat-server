@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -35,7 +36,6 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) error {
 
 	go client.ReadMsg()
 	go client.WriteMsg()
-
 	return nil
 }
 
@@ -45,10 +45,6 @@ func (m *Manager) addClient(client *Client) {
 
 	m.clients[client.id] = client
 	log.Println(m.clients[client.id])
-
-	if err := client.ReadMsgForClient(client.id, client.id); err != nil {
-		log.Println(err)
-	}
 }
 
 func (m *Manager) removeClient(client *Client) {
@@ -61,4 +57,8 @@ func (m *Manager) removeClient(client *Client) {
 		delete(m.clients, client.id)
 		return
 	}
+}
+
+func (m *Manager) OnlineUser(w http.ResponseWriter, r *http.Request) error {
+	return json.NewEncoder(w).Encode(m.clients)
 }
