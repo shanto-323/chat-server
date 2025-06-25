@@ -14,7 +14,9 @@ type Manager struct {
 }
 
 func NewManager() *Manager {
-	return &Manager{}
+	return &Manager{
+		clients: make(ClientList),
+	}
 }
 
 func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) error {
@@ -30,6 +32,10 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) error {
 	log.Println("New Client: ", conn.RemoteAddr())
 	client := NewClient(conn, m)
 	m.addClient(client)
+
+	go client.ReadMsg()
+	go client.WriteMsg()
+
 	return nil
 }
 
@@ -38,6 +44,11 @@ func (m *Manager) addClient(client *Client) {
 	defer m.mu.Unlock()
 
 	m.clients[client.id] = client
+	log.Println(m.clients[client.id])
+
+	if err := client.ReadMsgForClient(client.id, client.id); err != nil {
+		log.Println(err)
+	}
 }
 
 func (m *Manager) removeClient(client *Client) {
@@ -45,8 +56,8 @@ func (m *Manager) removeClient(client *Client) {
 	defer m.mu.Unlock()
 
 	if _, ok := m.clients[client.id]; ok {
-		client.conn.Close()
 		client.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "bye bye!"))
+		client.conn.Close()
 		delete(m.clients, client.id)
 		return
 	}
