@@ -62,8 +62,16 @@ func (c *Client) ReadMsg() {
 			}
 			receiverClient.msgPool <- message
 		case TYPE_LIST:
-			list, _ := json.Marshal(c.manager.clients)
-			message.Payload = list
+			var list []string
+			for i := range c.manager.clients {
+				if c.manager.clients[i].id == c.id {
+					continue
+				}
+				list = append(list, c.manager.clients[i].id)
+			}
+
+			payload, _ := json.Marshal(&UserList{IdList: list})
+			message.Payload = payload
 
 			select {
 			case c.msgPool <- message:
@@ -102,6 +110,7 @@ func (c *Client) WriteMsg() {
 				log.Println(err)
 				return
 			}
+			c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		}
 	}
 }

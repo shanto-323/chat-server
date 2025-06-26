@@ -20,3 +20,11 @@ type OutgoingMessage struct {
 	SenderId string          `json:"sender_id,omitempty"`
 	Payload  json.RawMessage `json:"payload,omitempty"`
 }
+
+type UserList struct {
+	IdList []string `json:"id_list"`
+}
+
+type UserModel struct {
+	Id string `json:"id"`
+}
