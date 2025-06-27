@@ -18,10 +18,6 @@ func main() {
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		manager.ServerWS(w, r)
 	})
-	router.HandleFunc("/clients", func(w http.ResponseWriter, r *http.Request) {
-		manager.OnlineUser(w, r)
-	})
-
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 

@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -17,20 +18,23 @@ const (
 	APP_NAME string = "Chat App"
 )
 
-var WINDOW_SIZE fyne.Size = fyne.NewSize(900, 700)
+var WINDOW_SIZE fyne.Size = fyne.NewSize(500, 250)
 
 type App struct {
-	app     fyne.App
-	conn    *websocket.Conn
-	clients UserList
-	table   *widget.Table
+	app         fyne.App
+	conn        *websocket.Conn
+	client      *UserModel
+	clients     UserList
+	userListBox *fyne.Container
+	mu          sync.RWMutex
 }
 
 func NewApp() *App {
 	a := app.New()
 	return &App{
-		app:     a,
-		clients: UserList{},
+		app:         a,
+		clients:     UserList{},
+		userListBox: container.NewVBox(),
 	}
 }
 
@@ -64,7 +68,7 @@ func (u *App) CurrentScreen() fyne.CanvasObject {
 			}),
 		),
 		nil,
-		u.WriteList(),
+		u.userListBox,
 		nil,
 		u.WriteMessage(),
 	)
@@ -86,6 +90,13 @@ func (u *App) ReadMessage() {
 		}
 
 		switch message.MsgType {
+		case TYPE_INFO:
+			var client UserModel
+			if err := json.Unmarshal(message.Payload, &client); err != nil {
+				log.Println(err)
+				continue
+			}
+			u.client = &client
 		case TYPE_CHAT:
 			log.Println(string(message.Payload))
 		case TYPE_LIST:
@@ -94,9 +105,20 @@ func (u *App) ReadMessage() {
 				log.Println(err)
 				continue
 			}
+			if len(u.clients.IdList) == len(list.IdList) {
+				continue
+			}
+			u.mu.Lock()
 			u.clients = list
-		}
+			u.mu.Unlock()
 
+			log.Println(list)
+			fyne.Do(
+				func() {
+					u.WriteList()
+				},
+			)
+		}
 	}
 }
 
@@ -108,8 +130,8 @@ func (u *App) WriteMessage() fyne.CanvasObject {
 	button := widget.NewButton(
 		"send", func() {
 			message := OutgoingMessage{
-				MsgType:    TYPE_LIST,
-				SenderId:   idEntity.Text,
+				MsgType:    TYPE_CHAT,
+				SenderId:   u.client.Id,
 				ReceiverId: idEntity.Text,
 				Payload:    chatEntity.Text,
 			}
@@ -125,35 +147,35 @@ func (u *App) WriteMessage() fyne.CanvasObject {
 	return messageSection
 }
 
-func (u *App) WriteList() fyne.CanvasObject {
-	log.Println("working")
-	u.table = widget.NewTable(
-		func() (int, int) {
-			return len(u.clients.IdList), 1 // rows, columns
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("Cell Template")
-		},
-		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			label := cell.(*widget.Label)
-			if id.Row < len(u.clients.IdList) {
-				label.SetText(u.clients.IdList[id.Row])
-			}
-		},
-	)
+func (u *App) WriteList() {
+	u.userListBox.Objects = nil
+	if len(u.clients.IdList) == 0 {
+		return
+	}
 
-	return u.table
+	for _, id := range u.clients.IdList {
+		u.userListBox.Add(widget.NewButton(id, func() {
+			log.Println(id)
+		}))
+	}
+	u.userListBox.Refresh()
 }
 
 func (u *App) UpdateList() {
 	for {
-		if len(u.clients.IdList) != 0 {
+		if u.client == nil {
 			continue
 		}
-
-		time.Sleep(2 * time.Second)
-		if u.table != nil {
-			u.table.Refresh()
+		u.mu.Lock()
+		message := Message{
+			MsgType:  TYPE_LIST,
+			SenderId: u.client.Id,
 		}
+		if err := u.conn.WriteJSON(&message); err != nil {
+			log.Println(err)
+			return
+		}
+		u.mu.Unlock()
+		time.Sleep(5 * time.Second)
 	}
 }

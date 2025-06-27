@@ -49,18 +49,13 @@ func (c *Client) ReadMsg() {
 
 		switch message.MsgType {
 		case TYPE_CHAT:
-			receiverClient, ok := c.manager.clients[message.ReceiverId]
-			if !ok {
-				log.Println("user not found")
-			}
-
+			receiverClient := c.manager.clients[message.ReceiverId]
 			select {
 			case receiverClient.msgPool <- message:
-				log.Println("new message: ")
+				log.Println("new message: ", TYPE_CHAT)
 			default:
 				log.Println("buf size full")
 			}
-			receiverClient.msgPool <- message
 		case TYPE_LIST:
 			var list []string
 			for i := range c.manager.clients {
@@ -75,7 +70,7 @@ func (c *Client) ReadMsg() {
 
 			select {
 			case c.msgPool <- message:
-				log.Println("new message: ")
+				log.Println("new message: ", TYPE_LIST)
 			default:
 				log.Println("buf size full")
 			}

@@ -3,6 +3,7 @@ package backend
 import "encoding/json"
 
 const (
+	TYPE_INFO  = "info"
 	TYPE_CHAT  = "chat"
 	TYPE_LIST  = "list"
 	TYPE_ALIVE = "ping"
@@ -26,5 +27,6 @@ type UserList struct {
 }
 
 type UserModel struct {
-	Id string `json:"id"`
+	Id       string `json:"id"`
+	ConnAddr string `json:"conn_addr"`
 }
