@@ -1,13 +1,13 @@
 package main
 
 import (
-	"log"
+	"fmt"
 
 	"chat_app/ui"
 )
 
 func main() {
 	app := ui.NewApp()
-	log.Println("ui running.....")
 	app.Run()
+	fmt.Println("App running ....")
 }
