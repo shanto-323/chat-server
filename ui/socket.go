@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"fyne.io/fyne/v2"
 	"github.com/gorilla/websocket"
 )
 
@@ -20,6 +19,7 @@ type Socket struct {
 	Client    *UserModel
 	Clients   UserList
 	Connected bool
+	NewList   chan bool
 }
 
 func NewSocket() *Socket {
@@ -37,6 +37,7 @@ func (s *Socket) Connect() error {
 	s.Ctx, s.Cancel = context.WithCancel(context.Background())
 	s.conn = conn
 	s.Connected = true
+	s.NewList = make(chan bool, 1)
 
 	go s.ReadMessage()
 	go s.UpdateList()
@@ -54,6 +55,7 @@ func (s *Socket) Disconnect() error {
 	s.Cancel()
 	s.conn.Close()
 	s.Connected = false
+	s.Clients.IdList = nil
 	return nil
 }
 
@@ -101,12 +103,12 @@ func (s *Socket) ReadMessage() {
 					s.Clients = list
 					s.mu.Unlock()
 
-					log.Println(list)
-					fyne.Do(
-						func() {
-							// u.WriteList()
-						},
-					)
+					select {
+					case s.NewList <- true:
+						log.Println(list)
+					default:
+						log.Println("skipped")
+					}
 				}
 			}
 		}

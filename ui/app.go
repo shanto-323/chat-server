@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 
@@ -39,7 +40,7 @@ func (u *App) Run() {
 
 func (u *App) Ui() fyne.CanvasObject {
 	topBar := u.topBar()
-	listBar := container.NewVBox()
+	listBar := container.NewVScroll(u.userListBox)
 	chatBar := container.NewVBox()
 
 	r1 := canvas.NewRectangle(color.White)
@@ -58,18 +59,40 @@ func (u *App) topBar() fyne.CanvasObject {
 			if err := u.socket.Disconnect(); err != nil {
 				return
 			}
+			u.userListBox.Objects = nil
+			u.userListBox.Refresh()
 			button.SetText("Connect")
 		} else {
 			err := u.socket.Connect()
 			if err != nil {
 				button.SetText("Connect")
 			} else {
+				go u.writeList()
 				button.SetText("Disconnect")
 			}
 		}
 	}
-
 	return button
+}
+
+func (u *App) writeList() {
+	for {
+		fmt.Println("running")
+		select {
+		case <-u.socket.Ctx.Done():
+			return
+		case msg := <-u.socket.NewList:
+			if msg {
+				u.userListBox.Objects = nil
+				for _, id := range u.socket.Clients.IdList {
+					u.userListBox.Add(widget.NewButton(id, func() {
+						log.Println(id)
+					}))
+				}
+				u.userListBox.Refresh()
+			}
+		}
+	}
 }
 
 func (u *App) WriteMessage() fyne.CanvasObject {
@@ -95,18 +118,4 @@ func (u *App) WriteMessage() fyne.CanvasObject {
 
 	messageSection := container.NewVBox(chatEntity, idEntity, button)
 	return messageSection
-}
-
-func (u *App) WriteList() {
-	u.userListBox.Objects = nil
-	if len(u.socket.Clients.IdList) == 0 {
-		return
-	}
-
-	for _, id := range u.socket.Clients.IdList {
-		u.userListBox.Add(widget.NewButton(id, func() {
-			log.Println(id)
-		}))
-	}
-	u.userListBox.Refresh()
 }
