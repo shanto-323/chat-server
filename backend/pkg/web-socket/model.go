@@ -1,13 +1,6 @@
-package backend
+package websocket
 
 import "encoding/json"
-
-const (
-	TYPE_INFO  = "info"
-	TYPE_CHAT  = "chat"
-	TYPE_LIST  = "list"
-	TYPE_ALIVE = "ping"
-)
 
 type IncommingMessage struct {
 	MsgType    string          `json:"type"`
