@@ -109,6 +109,9 @@ func (s *Socket) ReadMessage() {
 					default:
 						log.Println("skipped")
 					}
+				case TYPE_CLOSE:
+					log.Println("closing connection")
+					s.Disconnect()
 				}
 			}
 		}
@@ -117,10 +120,12 @@ func (s *Socket) ReadMessage() {
 
 func (s *Socket) UpdateList() {
 	for {
-		for {
+		ticker := time.NewTicker(5 * time.Second)
+		for range ticker.C {
 			select {
 			case <-s.Ctx.Done():
 				log.Println("stoping update-list")
+				ticker.Stop()
 				return
 			default:
 				{

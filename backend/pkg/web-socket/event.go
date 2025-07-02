@@ -21,7 +21,7 @@ type Event struct {
 	logger *logger.ZapLogger
 }
 
-func NewEvent(c *Client, payload []byte, logger *logger.ZapLogger) *Event {
+func NewEvent(c *Client, logger *logger.ZapLogger) *Event {
 	return &Event{
 		client: c,
 		logger: logger,
@@ -29,12 +29,12 @@ func NewEvent(c *Client, payload []byte, logger *logger.ZapLogger) *Event {
 }
 
 func (e *Event) CreateMessage(payload []byte) *IncommingMessage {
-	var message *IncommingMessage
-	if err := json.Unmarshal(payload, message); err != nil {
+	var message IncommingMessage
+	if err := json.Unmarshal(payload, &message); err != nil {
 		e.logger.Error("Error marshaling payload!")
 		return nil
 	}
-	return message
+	return &message
 }
 
 func (e *Event) ChatEvent(receiverClient *Client, message *IncommingMessage) {
@@ -67,16 +67,24 @@ func (e *Event) ListEvent(message *IncommingMessage) {
 	}
 }
 
-func (e *Event) ClosingEvent(clients ClientList) {
-	var message IncommingMessage
-	message.MsgType = TYPE_CLOSE
-	for _, client := range clients {
-		message.SenderId = client.id
-		select {
-		case e.client.msgPool <- message:
-			e.logger.Info("Closing!")
-		default:
-			e.logger.Error("Buffer is full!")
-		}
+func (e *Event) InfoEvent() {
+	c := e.client
+	message := IncommingMessage{
+		MsgType:    TYPE_INFO,
+		SenderId:   c.id,
+		ReceiverId: c.id,
+	}
+	payload := UserModel{
+		Id:       c.id,
+		ConnAddr: c.conn.RemoteAddr().String(),
+	}
+	payloadJson, _ := json.Marshal(&payload)
+	message.Payload = payloadJson
+
+	select {
+	case c.msgPool <- message:
+		e.logger.Info("Info about client.")
+	default:
+		e.logger.Error("Buffer is full!")
 	}
 }

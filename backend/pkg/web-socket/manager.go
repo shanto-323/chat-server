@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -47,10 +46,10 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) error {
 
 	m.logger.Info(fmt.Sprintln("New Client:", conn.RemoteAddr()))
 
-	// add event in client
 	client := NewClient(conn, m)
+	client.event = NewEvent(client, m.logger)
 	m.addClient(client)
-	m.sendInfo(client)
+	client.event.InfoEvent()
 
 	m.wg.Add(2)
 	go client.ReadMsg()
@@ -84,30 +83,10 @@ func (m *Manager) Shutdown(ctxS context.Context) {
 
 	select {
 	case <-wgDone:
+		m.redisClient.Close()
 		m.logger.Info("Graceful shutdown")
 	case <-ctxS.Done():
 		m.logger.Error("Forced shutdown")
-	}
-}
-
-func (m *Manager) sendInfo(c *Client) {
-	message := IncommingMessage{
-		MsgType:    TYPE_INFO,
-		SenderId:   c.id,
-		ReceiverId: c.id,
-	}
-	payload := UserModel{
-		Id:       c.id,
-		ConnAddr: c.conn.RemoteAddr().String(),
-	}
-	payloadJson, _ := json.Marshal(&payload)
-	message.Payload = payloadJson
-
-	select {
-	case c.msgPool <- message:
-		m.logger.Info("Info about client.")
-	default:
-		m.logger.Error("Buffer is full!")
 	}
 }
 
@@ -125,8 +104,8 @@ func (m *Manager) removeClient(c *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// REMOVE FROM REDIS
-	m.redisClient.Remove(m.ctx, c.conn.LocalAddr().Network())
+	ctx := context.WithoutCancel(context.Background())
+	m.redisClient.Remove(ctx, c.conn.LocalAddr().Network())
 
 	c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "bye bye!"))
 	c.conn.Close()

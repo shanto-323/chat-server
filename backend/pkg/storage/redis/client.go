@@ -27,6 +27,10 @@ func NewRedisClient(url string, logger *logger.ZapLogger) (*RedisClient, error) 
 	}, nil
 }
 
+func (r *RedisClient) Close() {
+	r.client.Close()
+}
+
 func (r *RedisClient) Set(ctx context.Context, key string, value any) error {
 	err := r.client.Set(ctx, key, value, 24*3600*time.Second).Err() // 1Day default
 	if err != nil {

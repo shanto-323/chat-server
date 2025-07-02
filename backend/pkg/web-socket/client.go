@@ -15,6 +15,7 @@ type Client struct {
 	conn    *websocket.Conn
 	manager *Manager
 	msgPool chan IncommingMessage
+	event   *Event
 }
 
 func NewClient(conn *websocket.Conn, manager *Manager) *Client {
@@ -33,12 +34,13 @@ func (c *Client) ReadMsg() {
 		c.manager.removeClient(c)
 	}()
 
+	event := c.event
 	for {
 		_, payload, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
-		event := NewEvent(c, payload, c.manager.logger)
+
 		message := event.CreateMessage(payload)
 		if message == nil {
 			continue

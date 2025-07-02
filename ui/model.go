@@ -7,6 +7,7 @@ const (
 	TYPE_CHAT  = "chat"
 	TYPE_LIST  = "list"
 	TYPE_ALIVE = "ping"
+	TYPE_CLOSE = "close"
 )
 
 type Message struct {

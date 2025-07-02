@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -67,6 +68,18 @@ func (u *App) topBar() fyne.CanvasObject {
 			if err != nil {
 				button.SetText("Connect")
 			} else {
+				go func() {
+					ticker := time.NewTicker(2 * time.Second)
+					defer ticker.Stop()
+					for range ticker.C {
+						if u.socket.Connected == false {
+							u.userListBox.Objects = nil
+							u.userListBox.Refresh()
+							button.SetText("Connect")
+							break
+						}
+					}
+				}()
 				go u.writeList()
 				button.SetText("Disconnect")
 			}
