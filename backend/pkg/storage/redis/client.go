@@ -10,28 +10,43 @@ import (
 	"go.uber.org/zap"
 )
 
-type RedisClient struct {
-	client *redis.Client
-	logger *logger.ZapLogger
+const (
+	LIST_KEY = "list"
+)
+
+type RedisClient interface {
+	Close()
+	Set(ctx context.Context, key string, value any) error
+	Exists(ctx context.Context, key string) error
+	Get(ctx context.Context, key string) error
+	Remove(ctx context.Context, keys ...string) error
+	SetList(ctx context.Context, key string, value any) error
+	GetList(ctx context.Context, key string) ([]string, error)
+	RemoveFromList(ctx context.Context, key string, value any) error
 }
 
-func NewRedisClient(url string, logger *logger.ZapLogger) (*RedisClient, error) {
+type redisClient struct {
+	client *redis.Client
+	logger logger.ZapLogger
+}
+
+func NewRedisClient(url string, logger logger.ZapLogger) (RedisClient, error) {
 	opt, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, err
 	}
 	client := redis.NewClient(opt)
-	return &RedisClient{
+	return &redisClient{
 		client: client,
 		logger: logger,
 	}, nil
 }
 
-func (r *RedisClient) Close() {
+func (r *redisClient) Close() {
 	r.client.Close()
 }
 
-func (r *RedisClient) Set(ctx context.Context, key string, value any) error {
+func (r *redisClient) Set(ctx context.Context, key string, value any) error {
 	err := r.client.Set(ctx, key, value, 24*3600*time.Second).Err() // 1Day default
 	if err != nil {
 		r.logger.Error("redis", zap.String("err", err.Error()))
@@ -40,7 +55,7 @@ func (r *RedisClient) Set(ctx context.Context, key string, value any) error {
 	return nil
 }
 
-func (r *RedisClient) Exists(ctx context.Context, key string) error {
+func (r *redisClient) Exists(ctx context.Context, key string) error {
 	err := r.client.Exists(ctx, key).Err()
 	if err != nil {
 		r.logger.Error("redis", zap.String("err", err.Error()))
@@ -49,7 +64,7 @@ func (r *RedisClient) Exists(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *RedisClient) Get(ctx context.Context, key string) error {
+func (r *redisClient) Get(ctx context.Context, key string) error {
 	resp := r.client.Get(ctx, key)
 	val, err := resp.Result()
 	if err != nil {
@@ -60,7 +75,7 @@ func (r *RedisClient) Get(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *RedisClient) Remove(ctx context.Context, keys ...string) error {
+func (r *redisClient) Remove(ctx context.Context, keys ...string) error {
 	err := r.client.Del(ctx, keys...).Err()
 	if err != nil {
 		r.logger.Error("redis", zap.String("err", err.Error()))
@@ -69,7 +84,7 @@ func (r *RedisClient) Remove(ctx context.Context, keys ...string) error {
 	return nil
 }
 
-func (r *RedisClient) SetList(ctx context.Context, key string, value any) error {
+func (r *redisClient) SetList(ctx context.Context, key string, value any) error {
 	err := r.client.RPush(ctx, key, value).Err()
 	if err != nil {
 		r.logger.Error("redis", zap.String("err", err.Error()))
@@ -78,7 +93,7 @@ func (r *RedisClient) SetList(ctx context.Context, key string, value any) error 
 	return nil
 }
 
-func (r *RedisClient) GetList(ctx context.Context, key string) ([]string, error) {
+func (r *redisClient) GetList(ctx context.Context, key string) ([]string, error) {
 	resp := r.client.LRange(ctx, key, 0, -1)
 	if resp.Err() != nil {
 		r.logger.Error("redis", zap.String("err", resp.Err().Error()))
@@ -87,7 +102,7 @@ func (r *RedisClient) GetList(ctx context.Context, key string) ([]string, error)
 	return resp.Val(), nil
 }
 
-func (r *RedisClient) RemoveFromList(ctx context.Context, key string, value any) error {
+func (r *redisClient) RemoveFromList(ctx context.Context, key string, value any) error {
 	err := r.client.LRem(ctx, key, 1, value).Err()
 	if err != nil {
 		r.logger.Error("redis", zap.String("err", err.Error()))

@@ -2,10 +2,9 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"chat_app/backend/logger"
-
-	"go.uber.org/zap"
 )
 
 const (
@@ -16,59 +15,67 @@ const (
 	TYPE_CLOSE = "close"
 )
 
-type Event struct {
-	client *Client
-	logger *logger.ZapLogger
+type Event interface {
+	CreateMessage(payload []byte) (*IncommingMessage, error)
+	ChatEvent(c *Client, message IncommingMessage) error
+	ListEvent(c *Client, message IncommingMessage) ([]string, error)
+	InfoEvent(c *Client) error
+	WriteMsg(c *Client, message IncommingMessage) error
 }
 
-func NewEvent(c *Client, logger *logger.ZapLogger) *Event {
-	return &Event{
-		client: c,
+type event struct {
+	logger logger.ZapLogger
+}
+
+func NewEvent(logger logger.ZapLogger) Event {
+	return &event{
 		logger: logger,
 	}
 }
 
-func (e *Event) CreateMessage(payload []byte) *IncommingMessage {
+func (e *event) CreateMessage(payload []byte) (*IncommingMessage, error) {
 	var message IncommingMessage
 	if err := json.Unmarshal(payload, &message); err != nil {
-		e.logger.Error("Error marshaling payload!")
-		return nil
+		return nil, err
 	}
-	return &message
+	return &message, nil
 }
 
-func (e *Event) ChatEvent(receiverClient *Client, message *IncommingMessage) {
+func (e *event) ChatEvent(c *Client, message IncommingMessage) error {
 	select {
-	case receiverClient.msgPool <- *message:
-		e.logger.Info("Message", zap.String("TYPE", TYPE_CHAT))
+	case c.MsgPool <- message:
+		return nil
 	default:
-		e.logger.Error("Buffer is full!")
+		return fmt.Errorf("Buffer is full!")
 	}
 }
 
-func (e *Event) ListEvent(message *IncommingMessage) {
-	c := e.client
+func (e *event) ListEvent(c *Client, message IncommingMessage) ([]string, error) {
 	var list []string
-	for i := range c.manager.clients {
+	clients := c.manager.clients
+
+	for i := range clients {
 		if c.manager.clients[i].id == c.id {
 			continue
 		}
 		list = append(list, c.manager.clients[i].id)
 	}
 
-	payload, _ := json.Marshal(&UserList{IdList: list})
+	payload, err := json.Marshal(&UserList{IdList: list})
+	if err != nil {
+		return nil, err
+	}
 	message.Payload = payload
 
 	select {
-	case c.msgPool <- *message:
-		e.logger.Info("Message", zap.String("TYPE", TYPE_LIST))
+	case c.MsgPool <- message:
+		return list, nil
 	default:
-		e.logger.Error("Buffer is full!")
+		return nil, fmt.Errorf("Buffer is full!")
 	}
 }
 
-func (e *Event) InfoEvent() {
-	c := e.client
+func (e *event) InfoEvent(c *Client) error {
 	message := IncommingMessage{
 		MsgType:    TYPE_INFO,
 		SenderId:   c.id,
@@ -82,9 +89,22 @@ func (e *Event) InfoEvent() {
 	message.Payload = payloadJson
 
 	select {
-	case c.msgPool <- message:
-		e.logger.Info("Info about client.")
+	case c.MsgPool <- message:
+		return nil
 	default:
-		e.logger.Error("Buffer is full!")
+		return fmt.Errorf("Buffer is full!")
 	}
+}
+
+func (e *event) WriteMsg(c *Client, message IncommingMessage) error {
+	outgoingMessage := &OutgoingMessage{
+		MsgType:  message.MsgType,
+		SenderId: message.SenderId,
+		Payload:  message.Payload,
+	}
+
+	if err := c.conn.WriteJSON(outgoingMessage); err != nil {
+		return err
+	}
+	return nil
 }

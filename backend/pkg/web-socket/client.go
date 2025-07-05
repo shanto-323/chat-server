@@ -8,23 +8,20 @@ import (
 	"github.com/segmentio/ksuid"
 )
 
-type ClientList map[string]*Client
-
 type Client struct {
 	id      string
 	conn    *websocket.Conn
+	MsgPool chan IncommingMessage
 	manager *Manager
-	msgPool chan IncommingMessage
-	event   *Event
 }
 
-func NewClient(conn *websocket.Conn, manager *Manager) *Client {
+func NewClient(conn *websocket.Conn, m *Manager) *Client {
 	id := ksuid.New().String()
 	return &Client{
 		id:      id,
 		conn:    conn,
-		manager: manager,
-		msgPool: make(chan IncommingMessage, 1024),
+		MsgPool: make(chan IncommingMessage, 1024),
+		manager: m,
 	}
 }
 
@@ -34,15 +31,16 @@ func (c *Client) ReadMsg() {
 		c.manager.removeClient(c)
 	}()
 
-	event := c.event
+	event := c.manager.event
+
 	for {
 		_, payload, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
 
-		message := event.CreateMessage(payload)
-		if message == nil {
+		message, err := event.CreateMessage(payload)
+		if err != nil {
 			continue
 		}
 		message.SenderId = c.id
@@ -50,9 +48,9 @@ func (c *Client) ReadMsg() {
 		switch message.MsgType {
 		case TYPE_CHAT:
 			receiverClient := c.manager.clients[message.ReceiverId]
-			event.ChatEvent(receiverClient, message)
+			event.ChatEvent(receiverClient, *message)
 		case TYPE_LIST:
-			event.ListEvent(message)
+			event.ListEvent(c, *message)
 		case TYPE_ALIVE:
 			waitTime := 30 * time.Second
 			c.conn.SetReadDeadline(time.Now().Add(waitTime))
@@ -70,7 +68,7 @@ func (c *Client) WriteMsg() {
 	}()
 	for {
 		select {
-		case msg := <-c.msgPool:
+		case msg := <-c.MsgPool:
 			outgoingMessage := &OutgoingMessage{
 				MsgType:  msg.MsgType,
 				SenderId: msg.SenderId,

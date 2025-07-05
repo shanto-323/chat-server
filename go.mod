@@ -39,7 +39,7 @@ require (
 	github.com/rymdport/portal v0.4.1 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.10.0
 	github.com/yuin/goldmark v1.7.12 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/image v0.28.0 // indirect

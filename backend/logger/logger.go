@@ -5,19 +5,19 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type loggerInterface interface {
+type ZapLogger interface {
 	Info(msg string, fields ...zap.Field)
 	Error(msg string, fields ...zap.Field)
 	Sync() error
 }
 
-type ZapLogger struct {
+type zapLogger struct {
 	logger *zap.Logger
 }
 
-var _ loggerInterface = (*ZapLogger)(nil)
+var _ ZapLogger = (*zapLogger)(nil)
 
-func NewLogger() (*ZapLogger, error) {
+func NewLogger() (ZapLogger, error) {
 	cfg := zap.NewDevelopmentConfig()
 	cfg.Encoding = "console"
 	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -27,19 +27,19 @@ func NewLogger() (*ZapLogger, error) {
 		return nil, err
 	}
 
-	return &ZapLogger{
+	return &zapLogger{
 		logger: logger,
 	}, nil
 }
 
-func (z *ZapLogger) Info(msg string, fields ...zap.Field) {
+func (z *zapLogger) Info(msg string, fields ...zap.Field) {
 	z.logger.Info(msg, fields...)
 }
 
-func (z *ZapLogger) Error(msg string, fields ...zap.Field) {
+func (z *zapLogger) Error(msg string, fields ...zap.Field) {
 	z.logger.Error(msg, fields...)
 }
 
-func (z *ZapLogger) Sync() error {
+func (z *zapLogger) Sync() error {
 	return z.logger.Sync()
 }

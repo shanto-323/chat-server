@@ -35,7 +35,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	router := mux.NewRouter()
-	manager := websocket.NewManager(ctx, redisCLient, logger)
+	manager := websocket.NewManager(ctx, logger, redisCLient)
 	router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		manager.ServerWS(w, r)
 	})

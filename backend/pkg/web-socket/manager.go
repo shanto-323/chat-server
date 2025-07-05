@@ -2,10 +2,9 @@ package websocket
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"chat_app/backend/logger"
 	"chat_app/backend/pkg/storage/redis"
@@ -13,24 +12,29 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type ClientList map[string]*Client
+
 type Manager struct {
-	clients     ClientList
-	mu          sync.RWMutex
-	redisClient *redis.RedisClient
-	logger      *logger.ZapLogger
+	redisClient redis.RedisClient
+	clients     ClientList // Swap it with database
+	event       Event
+	logger      logger.ZapLogger
 	ctx         context.Context
 	cancel      context.CancelFunc
+	mu          sync.RWMutex
 	wg          sync.WaitGroup
 }
 
-func NewManager(ctxP context.Context, redisClient *redis.RedisClient, logger *logger.ZapLogger) *Manager {
-	ctx, cancel := context.WithCancel(ctxP)
+func NewManager(ctx context.Context, l logger.ZapLogger, r redis.RedisClient) *Manager {
+	ctx, cancel := context.WithCancel(ctx)
 	return &Manager{
-		clients:     make(ClientList),
-		redisClient: redisClient,
-		logger:      logger,
+		redisClient: r,
+		logger:      l,
 		ctx:         ctx,
 		cancel:      cancel,
+		event:       NewEvent(l),
+		clients:     make(ClientList),
+		wg:          sync.WaitGroup{},
 	}
 }
 
@@ -44,17 +48,21 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	m.logger.Info(fmt.Sprintln("New Client:", conn.RemoteAddr()))
+	return m.addClient(conn)
+}
 
-	client := NewClient(conn, m)
-	client.event = NewEvent(client, m.logger)
-	m.addClient(client)
-	client.event.InfoEvent()
+func (m *Manager) addClient(conn *websocket.Conn) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c := NewClient(conn, m)
 
 	m.wg.Add(2)
-	go client.ReadMsg()
-	go client.WriteMsg()
-	return nil
+	go c.ReadMsg()
+	go c.WriteMsg()
+	m.redisClient.Set(m.ctx, c.conn.LocalAddr().Network(), true)
+	m.redisClient.SetList(m.ctx, redis.LIST_KEY, c.id)
+	return m.event.InfoEvent(c)
 }
 
 func (m *Manager) Shutdown(ctxS context.Context) {
@@ -65,20 +73,23 @@ func (m *Manager) Shutdown(ctxS context.Context) {
 		close(wgDone)
 	}()
 
-	for _, c := range m.clients {
-		go func(c *Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	clients, err := m.redisClient.GetList(ctx, redis.LIST_KEY)
+	if err != nil {
+		m.logger.Error(err.Error())
+	}
+
+	for _, cid := range clients {
+		go func(id string) {
 			message := IncommingMessage{
 				MsgType:    TYPE_CLOSE,
-				ReceiverId: c.id,
+				ReceiverId: id,
 			}
-
-			select {
-			case c.msgPool <- message:
-				m.logger.Info("Closing call sended.")
-			default:
-				m.logger.Error("Buffer is full!")
-			}
-		}(c)
+			c := m.clients[cid]
+			m.event.WriteMsg(c, message)
+		}(cid)
 	}
 
 	select {
@@ -88,16 +99,6 @@ func (m *Manager) Shutdown(ctxS context.Context) {
 	case <-ctxS.Done():
 		m.logger.Error("Forced shutdown")
 	}
-}
-
-func (m *Manager) addClient(c *Client) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.redisClient.Set(m.ctx, c.conn.LocalAddr().Network(), true)
-
-	m.clients[c.id] = c
-	log.Println(m.clients[c.id].id)
 }
 
 func (m *Manager) removeClient(c *Client) {
