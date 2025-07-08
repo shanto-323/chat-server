@@ -1,8 +1,9 @@
 package websocket
 
 import (
-	"log"
 	"time"
+
+	"chat_app/backend/pkg/model"
 
 	"github.com/gorilla/websocket"
 	"github.com/segmentio/ksuid"
@@ -11,7 +12,7 @@ import (
 type Client struct {
 	id      string
 	conn    *websocket.Conn
-	MsgPool chan IncommingMessage
+	MsgPool chan model.MessagePacket
 	manager *Manager
 }
 
@@ -20,7 +21,7 @@ func NewClient(conn *websocket.Conn, m *Manager) *Client {
 	return &Client{
 		id:      id,
 		conn:    conn,
-		MsgPool: make(chan IncommingMessage, 1024),
+		MsgPool: make(chan model.MessagePacket, 1024),
 		manager: m,
 	}
 }
@@ -30,32 +31,33 @@ func (c *Client) ReadMsg() {
 		c.manager.wg.Done()
 		c.manager.removeClient(c)
 	}()
-
-	event := c.manager.event
+	m := c.manager
 
 	for {
-		_, payload, err := c.conn.ReadMessage()
-		if err != nil {
-			break
-		}
+		select {
+		case <-m.Ctx.Done():
+			return
+		default:
+			_, payload, err := c.conn.ReadMessage()
+			if err != nil {
+				return
+			}
 
-		message, err := event.CreateMessage(payload)
-		if err != nil {
-			continue
-		}
-		message.SenderId = c.id
+			message, err := m.Event.CreateMessage(payload)
+			if err != nil {
+				m.Logger.Error(err.Error())
+			}
 
-		switch message.MsgType {
-		case TYPE_CHAT:
-			receiverClient := c.manager.clients[message.ReceiverId]
-			event.ChatEvent(receiverClient, *message)
-		case TYPE_LIST:
-			event.ListEvent(c, *message)
-		case TYPE_ALIVE:
-			waitTime := 30 * time.Second
-			c.conn.SetReadDeadline(time.Now().Add(waitTime))
-		}
+			switch message.MsgType {
+			case TYPE_CHAT:
 
+			case TYPE_LIST:
+				m.Event.ListEvent(c, message)
+			case TYPE_ALIVE:
+				waitTime := 30 * time.Second
+				c.conn.SetReadDeadline(time.Now().Add(waitTime))
+			}
+		}
 	}
 }
 
@@ -66,21 +68,17 @@ func (c *Client) WriteMsg() {
 		c.manager.wg.Done()
 		c.manager.removeClient(c)
 	}()
+	m := c.manager
+
 	for {
 		select {
+		case <-c.manager.Ctx.Done():
+			return
 		case msg := <-c.MsgPool:
-			outgoingMessage := &OutgoingMessage{
-				MsgType:  msg.MsgType,
-				SenderId: msg.SenderId,
-				Payload:  msg.Payload,
-			}
-
-			if err := c.conn.WriteJSON(outgoingMessage); err != nil {
-				log.Println(err)
-			}
+			m.Event.WriteMsg(c, msg)
 		case <-ticker.C:
 			if err := c.conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
-				log.Println(err)
+				m.Logger.Error(err.Error())
 				return
 			}
 			c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))

@@ -2,35 +2,27 @@ package redis
 
 import (
 	"context"
-	"time"
 
-	"chat_app/backend/logger"
-
-	"github.com/go-redis/redis/v8"
-	"go.uber.org/zap"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
-	LIST_KEY = "list"
+	LIST_KEY = "list" // Set Name.
 )
 
 type RedisClient interface {
 	Close()
-	Set(ctx context.Context, key string, value any) error
-	Exists(ctx context.Context, key string) error
-	Get(ctx context.Context, key string) error
-	Remove(ctx context.Context, keys ...string) error
-	SetList(ctx context.Context, key string, value any) error
-	GetList(ctx context.Context, key string) ([]string, error)
-	RemoveFromList(ctx context.Context, key string, value any) error
+	SAdd(ctx context.Context, pool ...any) error
+	SRem(ctx context.Context, members ...any) error
+	SMembers(ctx context.Context) ([]string, error)
+	IsMember(ctx context.Context, key string) (bool, error)
 }
 
 type redisClient struct {
 	client *redis.Client
-	logger logger.ZapLogger
 }
 
-func NewRedisClient(url string, logger logger.ZapLogger) (RedisClient, error) {
+func NewRedisClient(url string) (RedisClient, error) {
 	opt, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, err
@@ -38,7 +30,6 @@ func NewRedisClient(url string, logger logger.ZapLogger) (RedisClient, error) {
 	client := redis.NewClient(opt)
 	return &redisClient{
 		client: client,
-		logger: logger,
 	}, nil
 }
 
@@ -46,67 +37,22 @@ func (r *redisClient) Close() {
 	r.client.Close()
 }
 
-func (r *redisClient) Set(ctx context.Context, key string, value any) error {
-	err := r.client.Set(ctx, key, value, 24*3600*time.Second).Err() // 1Day default
-	if err != nil {
-		r.logger.Error("redis", zap.String("err", err.Error()))
-		return err
-	}
-	return nil
+func (r *redisClient) SAdd(ctx context.Context, pool ...any) error {
+	_, err := r.client.SAdd(ctx, LIST_KEY, pool...).Result()
+	return err
 }
 
-func (r *redisClient) Exists(ctx context.Context, key string) error {
-	err := r.client.Exists(ctx, key).Err()
-	if err != nil {
-		r.logger.Error("redis", zap.String("err", err.Error()))
-		return err
-	}
-	return nil
+func (r *redisClient) SRem(ctx context.Context, members ...any) error {
+	_, err := r.client.SRem(ctx, LIST_KEY, members...).Result()
+	return err
 }
 
-func (r *redisClient) Get(ctx context.Context, key string) error {
-	resp := r.client.Get(ctx, key)
-	val, err := resp.Result()
-	if err != nil {
-		r.logger.Error("redis", zap.String("err", err.Error()))
-		return err
-	}
-	r.logger.Info(val)
-	return nil
+func (r *redisClient) SMembers(ctx context.Context) ([]string, error) {
+	resp, err := r.client.SMembers(ctx, LIST_KEY).Result()
+	return resp, err
 }
 
-func (r *redisClient) Remove(ctx context.Context, keys ...string) error {
-	err := r.client.Del(ctx, keys...).Err()
-	if err != nil {
-		r.logger.Error("redis", zap.String("err", err.Error()))
-		return err
-	}
-	return nil
-}
-
-func (r *redisClient) SetList(ctx context.Context, key string, value any) error {
-	err := r.client.RPush(ctx, key, value).Err()
-	if err != nil {
-		r.logger.Error("redis", zap.String("err", err.Error()))
-		return err
-	}
-	return nil
-}
-
-func (r *redisClient) GetList(ctx context.Context, key string) ([]string, error) {
-	resp := r.client.LRange(ctx, key, 0, -1)
-	if resp.Err() != nil {
-		r.logger.Error("redis", zap.String("err", resp.Err().Error()))
-		return nil, resp.Err()
-	}
-	return resp.Val(), nil
-}
-
-func (r *redisClient) RemoveFromList(ctx context.Context, key string, value any) error {
-	err := r.client.LRem(ctx, key, 1, value).Err()
-	if err != nil {
-		r.logger.Error("redis", zap.String("err", err.Error()))
-		return err
-	}
-	return nil
+func (r *redisClient) IsMember(ctx context.Context, key string) (bool, error) {
+	resp, err := r.client.SIsMember(ctx, LIST_KEY, key).Result()
+	return resp, err
 }

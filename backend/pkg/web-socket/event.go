@@ -1,10 +1,15 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"chat_app/backend/logger"
+	"chat_app/backend/pkg/model"
+	"chat_app/backend/pkg/storage/database"
+	"chat_app/backend/pkg/storage/redis"
 )
 
 const (
@@ -16,75 +21,136 @@ const (
 )
 
 type Event interface {
-	CreateMessage(payload []byte) (*IncommingMessage, error)
-	ChatEvent(c *Client, message IncommingMessage) error
-	ListEvent(c *Client, message IncommingMessage) ([]string, error)
-	InfoEvent(c *Client) error
-	WriteMsg(c *Client, message IncommingMessage) error
+	CreateMessage(payload []byte) (*model.MessagePacket, error)
+	AddClient(c *Client)
+	ChatEvent(msg *model.MessagePacket) error
+	ListEvent(c *Client, message *model.MessagePacket) error
+	WriteMsg(c *Client, message model.MessagePacket) error
+	CloseEvent(m *Manager, ctx context.Context) error
 }
 
 type event struct {
-	logger logger.ZapLogger
+	logger      logger.ZapLogger
+	redisClient redis.RedisClient
+	repository  database.Repository
+	cPool       map[string]*Client
 }
 
-func NewEvent(logger logger.ZapLogger) Event {
+func NewEvent(l logger.ZapLogger, r redis.RedisClient, repo database.Repository) Event {
 	return &event{
-		logger: logger,
+		logger:      l,
+		redisClient: r,
+		repository:  repo,
+		cPool:       make(map[string]*Client),
 	}
 }
 
-func (e *event) CreateMessage(payload []byte) (*IncommingMessage, error) {
-	var message IncommingMessage
+func (e *event) AddClient(c *Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	e.redisClient.SAdd(ctx, c.id, true)
+	e.cPool[c.id] = c
+
+	message := model.MessagePacket{
+		MsgType:    TYPE_INFO,
+		SenderId:   c.id,
+		ReceiverId: c.id,
+		Payload:    json.RawMessage{},
+	}
+
+	payload := model.Client{
+		ID: c.id,
+	}
+	payloadJson, _ := json.Marshal(&payload)
+	message.Payload = payloadJson
+
+	select {
+	case c.MsgPool <- message:
+		e.logger.Info("New Connection....")
+	default:
+		e.logger.Error("Buffer is full")
+	}
+}
+
+func (e *event) CreateMessage(payload []byte) (*model.MessagePacket, error) {
+	var message model.MessagePacket
 	if err := json.Unmarshal(payload, &message); err != nil {
 		return nil, err
 	}
+
 	return &message, nil
 }
 
-func (e *event) ChatEvent(c *Client, message IncommingMessage) error {
+func (e *event) ChatEvent(msg *model.MessagePacket) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	alive, err := e.redisClient.IsMember(ctx, msg.ReceiverId)
+	if err != nil {
+		e.logger.Error(err.Error())
+		return err
+	}
+
+	if !alive {
+		// ScyllaDb For Message Queue
+		return nil
+	}
+
+	client, ok := e.cPool[msg.ReceiverId]
+	if !ok {
+		e.logger.Error("redis logic not aligning!!")
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := e.redisClient.SRem(ctx, msg.ReceiverId); err != nil {
+				e.logger.Error(err.Error())
+			}
+		}()
+		return nil
+	}
+
 	select {
-	case c.MsgPool <- message:
+	case client.MsgPool <- *msg:
 		return nil
 	default:
 		return fmt.Errorf("Buffer is full!")
 	}
 }
 
-func (e *event) ListEvent(c *Client, message IncommingMessage) ([]string, error) {
-	var list []string
-	clients := c.manager.clients
-
-	for i := range clients {
-		if c.manager.clients[i].id == c.id {
-			continue
-		}
-		list = append(list, c.manager.clients[i].id)
+func (e *event) ListEvent(c *Client, message *model.MessagePacket) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	clients, err := e.redisClient.SMembers(ctx)
+	if err != nil {
+		return err
 	}
 
-	payload, err := json.Marshal(&UserList{IdList: list})
+	activePool := model.ActivePool{
+		AliveList: clients,
+	}
+
+	payload, err := json.Marshal(&activePool)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	message.Payload = payload
 
 	select {
-	case c.MsgPool <- message:
-		return list, nil
+	case c.MsgPool <- *message:
+		return nil
 	default:
-		return nil, fmt.Errorf("Buffer is full!")
+		return fmt.Errorf("Buffer is full!")
 	}
 }
 
 func (e *event) InfoEvent(c *Client) error {
-	message := IncommingMessage{
+	message := model.MessagePacket{
 		MsgType:    TYPE_INFO,
 		SenderId:   c.id,
 		ReceiverId: c.id,
 	}
-	payload := UserModel{
-		Id:       c.id,
-		ConnAddr: c.conn.RemoteAddr().String(),
-	}
+	payload := c.id
 	payloadJson, _ := json.Marshal(&payload)
 	message.Payload = payloadJson
 
@@ -96,14 +162,43 @@ func (e *event) InfoEvent(c *Client) error {
 	}
 }
 
-func (e *event) WriteMsg(c *Client, message IncommingMessage) error {
-	outgoingMessage := &OutgoingMessage{
-		MsgType:  message.MsgType,
-		SenderId: message.SenderId,
-		Payload:  message.Payload,
+func (e *event) CloseEvent(m *Manager, ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	clients, err := e.redisClient.SMembers(ctx)
+	if err != nil {
+		return err
 	}
 
-	if err := c.conn.WriteJSON(outgoingMessage); err != nil {
+	for _, id := range clients {
+		client, ok := e.cPool[id]
+		if !ok {
+			e.logger.Error("redis logic not aligning!!")
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := e.redisClient.SRem(ctx, id); err != nil {
+					e.logger.Error(err.Error())
+				}
+			}()
+			return nil
+		}
+
+		m.wg.Add(1)
+		go func(c *Client) {
+			defer m.wg.Done()
+			message := model.MessagePacket{
+				MsgType:    TYPE_CLOSE,
+				ReceiverId: c.id,
+			}
+			e.WriteMsg(c, message)
+		}(client)
+	}
+	return nil
+}
+
+func (e *event) WriteMsg(c *Client, message model.MessagePacket) error {
+	if err := c.conn.WriteJSON(message); err != nil {
 		return err
 	}
 	return nil
