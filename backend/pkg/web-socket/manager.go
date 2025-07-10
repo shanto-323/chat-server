@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"chat_app/backend/logger"
+	"chat_app/backend/pkg/storage/database"
 	"chat_app/backend/pkg/storage/redis"
 
 	"github.com/gorilla/websocket"
@@ -20,9 +21,9 @@ type Manager struct {
 	wg     sync.WaitGroup
 }
 
-func NewManager(ctx context.Context, l logger.ZapLogger, r redis.RedisClient) *Manager {
+func NewManager(ctx context.Context, l logger.ZapLogger, r redis.RedisClient, s database.Repository) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
-	event := NewEvent(l, r, nil)
+	event := NewEvent(l, r, s)
 	return &Manager{
 		Logger: l,
 		Ctx:    ctx,

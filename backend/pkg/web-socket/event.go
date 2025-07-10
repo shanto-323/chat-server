@@ -93,13 +93,21 @@ func (e *event) ChatEvent(msg *model.MessagePacket) error {
 	}
 
 	if !alive {
-		// ScyllaDb For Message Queue
-		return nil
+		e.logger.Warn("Receiver is not alive!!")
+		err := e.repository.UpsertOffline(model.OfflineChat{
+			SenderId:   msg.SenderId,
+			ReceiverId: msg.ReceiverId,
+			Message:    string(msg.Payload),
+			CreatedAt:  time.Unix(msg.Timestamp, 64),
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	client, ok := e.cPool[msg.ReceiverId]
 	if !ok {
-		e.logger.Error("redis logic not aligning!!")
+		e.logger.Error("Redis logic not aligning!!")
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -112,6 +120,14 @@ func (e *event) ChatEvent(msg *model.MessagePacket) error {
 
 	select {
 	case client.MsgPool <- *msg:
+		chatId := e.chatId(msg.SenderId, msg.ReceiverId)
+		if err := e.repository.UpsertChat(model.Chat{
+			ChatId:    chatId,
+			Message:   string(msg.Payload),
+			CreatedAt: time.Unix(msg.Timestamp, 64),
+		}); err != nil {
+			return err
+		}
 		return nil
 	default:
 		return fmt.Errorf("Buffer is full!")
@@ -173,7 +189,7 @@ func (e *event) CloseEvent(m *Manager, ctx context.Context) error {
 	for _, id := range clients {
 		client, ok := e.cPool[id]
 		if !ok {
-			e.logger.Error("redis logic not aligning!!")
+			e.logger.Error("Redis logic not aligning!!")
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -202,4 +218,12 @@ func (e *event) WriteMsg(c *Client, message model.MessagePacket) error {
 		return err
 	}
 	return nil
+}
+
+func (e *event) chatId(id_1, id_2 string) string {
+	// ChatId = bigId + | + smallId
+	if id_1 > id_2 {
+		return id_1 + "|" + id_2
+	}
+	return id_2 + "|" + id_1
 }

@@ -50,7 +50,9 @@ func (c *Client) ReadMsg() {
 
 			switch message.MsgType {
 			case TYPE_CHAT:
-
+				if err := m.Event.ChatEvent(message); err != nil {
+					m.Logger.Error(err.Error())
+				}
 			case TYPE_LIST:
 				m.Event.ListEvent(c, message)
 			case TYPE_ALIVE:

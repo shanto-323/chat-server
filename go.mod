@@ -4,18 +4,19 @@ go 1.24.4
 
 require (
 	fyne.io/fyne/v2 v2.6.1
-	github.com/go-redis/redis/v8 v8.11.5
+	github.com/gocql/gocql v1.7.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
+	github.com/redis/go-redis/v9 v9.11.0
 	github.com/segmentio/ksuid v1.0.4
+	github.com/tinrab/retry v1.0.0
 	go.uber.org/zap v1.27.0
 )
 
 require (
-	github.com/gocql/gocql v1.7.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
+	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
-	github.com/redis/go-redis/v9 v9.11.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 )
 
@@ -42,7 +43,6 @@ require (
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.6.0 // indirect
-	github.com/onsi/gomega v1.37.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rymdport/portal v0.4.1 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect

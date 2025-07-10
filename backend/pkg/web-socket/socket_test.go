@@ -9,6 +9,7 @@ import (
 
 	"chat_app/backend/logger"
 	"chat_app/backend/pkg/model"
+	"chat_app/backend/pkg/storage/database"
 	"chat_app/backend/pkg/storage/redis"
 
 	"github.com/gorilla/websocket"
@@ -31,8 +32,12 @@ func TestSocket(t *testing.T) {
 	redisUrl := "redis://:123456@localhost:6379/0"
 	redisMockClient, _ := redis.NewRedisClient(redisUrl)
 
+	// Scylla
+	scyllaIp := "127.0.0.1"
+	scyllaDb, _ := database.NewScyllaDb(scyllaIp)
+
 	// New Manager
-	m := NewManager(ctx, logger, redisMockClient)
+	m := NewManager(ctx, logger, redisMockClient, scyllaDb)
 
 	// Http Server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
