@@ -48,3 +48,4 @@ func (z *zapLogger) Warn(msg string, fields ...zap.Field) {
 func (z *zapLogger) Sync() error {
 	return z.logger.Sync()
 }
+

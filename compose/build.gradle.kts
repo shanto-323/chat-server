@@ -1,20 +1,9 @@
 plugins {
-    kotlin("jvm") version "1.9.22" // ✅ safe Kotlin version for Compose Desktop
-    id("org.jetbrains.compose") version "1.6.10"
+    // this is necessary to avoid the plugins to be loaded multiple times
+    // in each subproject's classloader
+    alias(libs.plugins.composeHotReload) apply false
+    alias(libs.plugins.composeMultiplatform) apply false
+    alias(libs.plugins.composeCompiler) apply false
+    alias(libs.plugins.kotlinMultiplatform) apply false
+    alias(libs.plugins.kotlinxSerialization) apply false
 }
-
-repositories {
-    google()
-    mavenCentral()
-    maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
-}
-
-kotlin { jvmToolchain(17) }
-
-dependencies {
-    implementation(compose.desktop.currentOs)
-    implementation("io.insert-koin:koin-core:3.5.3")
-    implementation("io.insert-koin:koin-compose:1.0.3")
-}
-
-compose.desktop { application { mainClass = "MainKt" } }
