@@ -46,6 +46,7 @@ func (c *Client) ReadMsg() {
 			message, err := m.Event.CreateMessage(payload)
 			if err != nil {
 				m.Logger.Error(err.Error())
+				continue
 			}
 
 			switch message.MsgType {
@@ -54,7 +55,10 @@ func (c *Client) ReadMsg() {
 					m.Logger.Error(err.Error())
 				}
 			case TYPE_LIST:
-				m.Event.ListEvent(c, message)
+				m.Logger.Info("List!!")
+				if err := m.Event.ListEvent(c, message); err != nil {
+					m.Logger.Error(err.Error())
+				}
 			case TYPE_ALIVE:
 				waitTime := 30 * time.Second
 				c.conn.SetReadDeadline(time.Now().Add(waitTime))

@@ -6,6 +6,6 @@ import kotlinx.coroutines.flow.Flow
 
 interface ApiService{
     suspend fun Connect() : Response<Boolean>
-    suspend fun StartRead(): Flow<MessagePacket>
+    fun StartRead(): Flow<MessagePacket>
     suspend fun WriteMessage(msg : MessagePacket) : Response<Boolean>
 }

@@ -79,7 +79,11 @@ func (m *Manager) Shutdown(ctxS context.Context) {
 func (m *Manager) removeClient(c *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.Event.RemoveClient(c); err != nil {
+		m.Logger.Error(err.Error())
+	}
 
+	m.Logger.Info("Client Disconnected !!")
 	c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "bye bye!"))
 	c.conn.Close()
 }

@@ -23,10 +23,11 @@ const (
 type Event interface {
 	CreateMessage(payload []byte) (*model.MessagePacket, error)
 	AddClient(c *Client)
+	RemoveClient(c *Client) error
 	ChatEvent(msg *model.MessagePacket) error
 	ListEvent(c *Client, message *model.MessagePacket) error
 	WriteMsg(c *Client, message model.MessagePacket) error
-	CloseEvent(m *Manager, ctx context.Context) error
+	// CloseEvent(m *Manager, ctx context.Context) error
 }
 
 type event struct {
@@ -142,8 +143,30 @@ func (e *event) ListEvent(c *Client, message *model.MessagePacket) error {
 		return err
 	}
 
+	activeCllients := []string{}
+	for _, id := range clients {
+		_, ok := e.cPool[id]
+		if !ok {
+			e.logger.Error("Redis logic not aligning!!")
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := e.redisClient.SRem(ctx, id); err != nil {
+					e.logger.Error(err.Error())
+				}
+			}()
+			continue
+		}
+
+		if id == c.id {
+			continue
+		}
+
+		activeCllients = append(activeCllients, id)
+	}
+
 	activePool := model.ActivePool{
-		AliveList: clients,
+		AliveList: activeCllients,
 	}
 
 	payload, err := json.Marshal(&activePool)
@@ -178,38 +201,49 @@ func (e *event) InfoEvent(c *Client) error {
 	}
 }
 
-func (e *event) CloseEvent(m *Manager, ctx context.Context) error {
+// func (e *event) CloseEvent(m *Manager, ctx context.Context) error {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 	defer cancel()
+// 	clients, err := e.redisClient.SMembers(ctx)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	for _, id := range clients {
+// 		client, ok := e.cPool[id]
+// 		if !ok {
+// 			e.logger.Error("Redis logic not aligning!!")
+// 			go func() {
+// 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 				defer cancel()
+// 				if err := e.redisClient.SRem(ctx, id); err != nil {
+// 					e.logger.Error(err.Error())
+// 				}
+// 			}()
+// 			return nil
+// 		}
+
+// 		m.wg.Add(1)
+// 		go func(c *Client) {
+// 			defer m.wg.Done()
+// 			message := model.MessagePacket{
+// 				MsgType:    TYPE_CLOSE,
+// 				ReceiverId: c.id,
+// 			}
+// 			e.WriteMsg(c, message)
+// 		}(client)
+// 	}
+// 	return nil
+// }
+
+func (e *event) RemoveClient(c *Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	clients, err := e.redisClient.SMembers(ctx)
-	if err != nil {
+	if err := e.redisClient.SRem(ctx, c.id); err != nil {
+		e.logger.Error(err.Error())
 		return err
 	}
-
-	for _, id := range clients {
-		client, ok := e.cPool[id]
-		if !ok {
-			e.logger.Error("Redis logic not aligning!!")
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				if err := e.redisClient.SRem(ctx, id); err != nil {
-					e.logger.Error(err.Error())
-				}
-			}()
-			return nil
-		}
-
-		m.wg.Add(1)
-		go func(c *Client) {
-			defer m.wg.Done()
-			message := model.MessagePacket{
-				MsgType:    TYPE_CLOSE,
-				ReceiverId: c.id,
-			}
-			e.WriteMsg(c, message)
-		}(client)
-	}
+	delete(e.cPool, c.id)
 	return nil
 }
 

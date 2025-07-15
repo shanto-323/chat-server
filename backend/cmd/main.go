@@ -26,7 +26,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	redisUrl := "redis://:123456@localhost:6379/0"
+	redisUrl := "redis://:123456@redis1:6379/0"
 	redisCLient, err := redis.NewRedisClient(redisUrl)
 	if err != nil {
 		logger.Error(err.Error())
