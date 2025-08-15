@@ -1,0 +1,116 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    env_file:
+      - .env
+    ports:
+      - 5432:5432
+    networks:
+      - my-network
+    restart: unless-stopped
+    
+  scylla:
+    container_name: scyllaDb
+    image: scylladb/scylla:latest
+    ports:
+      - 9042:9042
+    networks:
+      - my-network
+    healthcheck:
+      test: [ "CMD-SHELL", "nodetool status | grep UN || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  migration:
+    image: scylladb/scylla:latest
+    networks:
+      - my-network
+    depends_on:
+      scylla:
+        condition: service_healthy
+    volumes:
+      - ./backend/pkg/storage/migration:/migrations
+    entrypoint: [ "sh", "-c", "until cqlsh scyllaDb -e 'DESC KEYSPACES'; do echo 'Waiting for ScyllaDB to be ready...'; sleep 5; done; cqlsh scyllaDb -f /migrations/001_keyspace.cql && cqlsh scyllaDb -f /migrations/003_offline_table.cql && cqlsh scyllaDb -f /migrations/002_chat_table.cql " ]
+    restart: "no"
+
+  redis:
+    container_name: redis1
+    image: redis:8.2-m01-alpine3.22
+    ports:
+      - 6379:6379
+    networks:
+      - my-network
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -a 123456 ping | grep pong || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
+    container_name: rabbit-mq
+    env_file:
+      - .env
+    networks:
+      - my-network
+    ports:
+      - 5672:5672
+      - 15672:15672
+    restart: on-failure
+
+######## SERVICE #######
+
+  gateway-1:
+    container_name: gateway-1
+    build:
+      context: .
+      dockerfile: ./gateway-1/Dockerfile
+    env_file:
+      - .env
+    networks:
+      - my-network
+    ports:
+      - 8080:8080
+    restart: on-failure
+
+  client-service:
+    container_name: client-service
+    build: 
+      context: .
+      dockerfile: ./client-service/Dockerfile
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    networks:
+      - my-network
+    ports:
+      - 8081:8081
+    restart: on-failure
+
+  message-service:
+    container_name: message-service
+    build: 
+      context: .
+      dockerfile: ./message-service/Dockerfile
+    depends_on:
+      - scylla
+      - rabbitmq
+    env_file:
+      - .env
+    networks:
+      - my-network
+    ports:
+      - 8082:8082
+    restart: on-failure
+
+networks:
+  my-network:
+    driver: bridge
