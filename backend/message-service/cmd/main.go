@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"log"
 	"log/slog"
 	"os"
@@ -9,7 +11,9 @@ import (
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
+	"github.com/rabbitmq/amqp091-go"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/shanto-323/Chat-Server-1/message-service/cmd/model"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/queue"
 	"github.com/tinrab/retry"
 )
@@ -66,6 +70,28 @@ func main() {
 		}
 
 		for m := range msg {
+			packet := model.Packet{}
+			if err := json.Unmarshal(m.Body, &packet); err != nil {
+				slog.Error(err.Error())
+				continue
+			}
+			message := model.Message{
+				UserId:   packet.ReceiverId,
+				SenderId: packet.SenderId,
+				Messsage: packet.Data,
+			}
+			message.Messsage += " GOT THE MESSAGE!!"
+			body, err := json.Marshal(&message)
+			if err != nil {
+				slog.Error(err.Error())
+				continue
+			}
+
+			queue.SendMessage(context.Background(), "message.service", "gateway.1", amqp091.Publishing{
+				ContentType:  "text/plain",
+				DeliveryMode: amqp091.Persistent,
+				Body:         body,
+			})
 			log.Println(string(m.Body))
 		}
 	}()

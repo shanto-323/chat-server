@@ -17,6 +17,7 @@ type Client struct {
 	Manager *Manager
 	Cancel  context.CancelFunc
 	Ctx     context.Context
+	MsgChan chan *model.Message
 }
 
 func NewClient(conn *websocket.Conn, m *Manager) *Client {
@@ -28,6 +29,7 @@ func NewClient(conn *websocket.Conn, m *Manager) *Client {
 		Manager: m,
 		Cancel:  cancel,
 		Ctx:     ctx,
+		MsgChan: make(chan *model.Message),
 	}
 }
 
@@ -58,7 +60,7 @@ func (c *Client) ReadMsg() {
 					m.Consumer.SendMessage(context.Background(), "message.service", "incomming.message", amqp091.Publishing{
 						ContentType:  "text/plain",
 						DeliveryMode: amqp091.Persistent,
-						Body:         []byte(packet.Data),
+						Body:         payload,
 					})
 					conn.WriteMessage(websocket.TextMessage, []byte(packet.Data))
 				case model.TYPE_LIST:
@@ -84,6 +86,8 @@ func (c *Client) WriteMsg() {
 		select {
 		case <-c.Ctx.Done():
 			return
+		case msg := <-c.MsgChan:
+			conn.WriteMessage(websocket.TextMessage, []byte("incomming --"+msg.Messsage))
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
 				return
