@@ -2,32 +2,31 @@ package connection
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/rabbitmq/amqp091-go"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/model"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/client"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/client/model"
 	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/queue"
 )
 
+var CLIENT_POOL = map[string]*Client{}
+
 type Manager struct {
-	// Event       Event
-	Ctx      context.Context
-	Cancel   context.CancelFunc
-	mu       sync.RWMutex
-	wg       sync.WaitGroup
-	Consumer queue.Consumer
+	Consumer   queue.Consumer
+	UserClient client.UserClient
+	mu         *sync.RWMutex
 }
 
 func NewManager(ctx context.Context, consumer queue.Consumer) *Manager {
-	ctx, cancel := context.WithCancel(ctx)
 	return &Manager{
-		Ctx:      ctx,
-		Cancel:   cancel,
-		wg:       sync.WaitGroup{},
-		Consumer: consumer,
+		Consumer:   consumer,
+		UserClient: client.NewClient(),
+		mu:         &sync.RWMutex{},
 	}
 }
 
@@ -35,70 +34,56 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) {
 	socket := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
+		CheckOrigin:     func(r *http.Request) bool { return true },
 	}
 	conn, err := socket.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error(err.Error())
 		return
 	}
-
-	if err := m.Consumer.SendMessage(context.Background(), "", "", amqp091.Publishing{
-		ContentType:  "text/plain",
-		DeliveryMode: amqp091.Persistent,
-		Body:         []byte(`hello new socket`),
-	}); err != nil {
-		slog.Error(err.Error())
+	conn.WriteMessage(websocket.TextMessage, []byte("working"))
+	request := model.UserRequest{}
+	for {
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+			continue
+		}
+		if err := json.Unmarshal(payload, &request); err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+			continue
+		}
+		resp, err := m.UserClient.Auth(&request)
+		if err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+			continue
+		}
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("success. Client id : %d", resp.ID)))
+		break
 	}
-
-	slog.Info("Message sent ...")
-
-	action := model.UserAction{}
-	if err := conn.ReadJSON(&action); err != nil {
-		slog.Error("invalid action: " + err.Error())
-		conn.Close()
-		return
-	}
-
-	// m.addClient(conn, resp)
+	go m.addClient(conn)
+	// REFACTOR AND REQUEST FOR CACHE
 }
 
-// func (m *Manager) addClient(conn *websocket.Conn, resp *model.User) {
-// 	m.mu.Lock()
-// 	defer m.mu.Unlock()
+func (m *Manager) addClient(conn *websocket.Conn) {
+	c := NewClient(conn, m)
 
-// 	c := NewClient(conn, m)
-// 	c.id = resp.ID
+	m.mu.Lock()
+	CLIENT_POOL[c.ID] = c
+	m.mu.Unlock()
 
-// 	m.wg.Add(2)
-// 	go c.ReadMsg()
-// 	go c.WriteMsg()
-// 	m.Event.AddClient(c)
-// }
-
-func (m *Manager) Shutdown(ctxS context.Context) {
-	defer m.Cancel()
-	done := make(chan struct{})
-	go func() {
-		m.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		slog.Info("Graceful shutdown")
-	case <-ctxS.Done():
-		slog.Error("Forced shutdown")
-	}
+	go c.ReadMsg()
+	go c.WriteMsg()
 }
 
 func (m *Manager) removeClient(c *Client) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	// if err := m.Event.RemoveClient(c); err != nil {
-	// 	slog.Error(err.Error())
-	// }
+	client := CLIENT_POOL[c.ID]
+	m.mu.Unlock()
+
+	client.Cancel()
 
 	slog.Info("Client Disconnected !!")
-	c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "bye bye!"))
-	c.conn.Close()
+	client.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "bye bye!"))
+	client.Conn.Close()
 }

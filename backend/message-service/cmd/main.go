@@ -49,17 +49,17 @@ func main() {
 	errChan := make(chan error, 1)
 	slog.Info("MESSAGE-SERVICE RUNNING")
 	go func() {
-		err := queue.CreateQueue("incomming.message", true, false)
+		err := queue.CreateQueue("message.queue", true, false)
 		if err != nil {
 			slog.Error(err.Error())
 			return
 		}
-		err = queue.CreateQueueBinding("incomming.message", "to.message.service", "message.queue")
+		err = queue.CreateQueueBinding("message.queue", "incomming.message", "message.service")
 		if err != nil {
 			slog.Error(err.Error())
 			return
 		}
-		msg, err := queue.Consumer("incomming.message", "message-service-1", false)
+		msg, err := queue.Consume("message.queue", "", false)
 		if err != nil {
 			slog.Error(err.Error())
 			return
@@ -74,7 +74,7 @@ func main() {
 	signal.Notify(stopChen, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
-	case _ = <-stopChen:
+	case <-stopChen:
 		slog.Info("closing server...")
 	case err := <-errChan:
 		slog.Error(err.Error())

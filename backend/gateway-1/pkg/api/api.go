@@ -19,7 +19,8 @@ type gorillaApi struct {
 
 func NewApi(port string, manager *connection.Manager) Api {
 	return &gorillaApi{
-		ipAddr: fmt.Sprintf(":%s", port),
+		ipAddr:  fmt.Sprintf(":%s", port),
+		manager: manager,
 	}
 }
 

@@ -1,26 +1,14 @@
 package connection
 
-import (
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/model"
-)
-
-const (
-	TYPE_INFO  = "info"
-	TYPE_CHAT  = "chat"
-	TYPE_LIST  = "list"
-	TYPE_ALIVE = "ping"
-	TYPE_CLOSE = "close"
-)
-
-type Event interface {
-	CreateMessage(payload []byte) (*model.MessagePacket, error)
-	AddClient(c *Client)
-	RemoveClient(c *Client) error
-	ChatEvent(msg *model.MessagePacket) error
-	ListEvent(c *Client, message *model.MessagePacket) error
-	WriteMsg(c *Client, message model.MessagePacket) error
-	// CloseEvent(m *Manager, ctx context.Context) error
-}
+// type Event interface {
+// 	CreateMessage(payload []byte) (*model.MessagePacket, error)
+// 	AddClient(c *Client)
+// 	RemoveClient(c *Client) error
+// 	ChatEvent(msg *model.MessagePacket) error
+// 	ListEvent(c *Client, message *model.MessagePacket) error
+// 	WriteMsg(c *Client, message model.MessagePacket) error
+// 	// CloseEvent(m *Manager, ctx context.Context) error
+// }
 
 // type event struct {
 // 	cPool map[uint]*Client

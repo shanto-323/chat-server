@@ -2,7 +2,6 @@ package queue
 
 import (
 	"context"
-	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -20,8 +19,7 @@ type rabbitClient struct {
 	ch   *amqp.Channel
 }
 
-func RabbitConnection(username, password, host, vhost string) (*amqp.Connection, error) {
-	url := fmt.Sprintf("amqp://%s:%s@%s/%s", username, password, host, vhost)
+func RabbitConnection(url string) (*amqp.Connection, error) {
 	return amqp.Dial(url)
 }
 

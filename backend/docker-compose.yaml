@@ -62,6 +62,13 @@ services:
     ports:
       - 5672:5672
       - 15672:15672
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./init-rabbitmq.sh:/docker-entrypoint-init.d/init-rabbitmq.sh
     restart: on-failure
 
 ######## SERVICE #######
@@ -101,8 +108,8 @@ services:
       context: .
       dockerfile: ./message-service/Dockerfile
     depends_on:
-      - scylla
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy 
     env_file:
       - .env
     networks:

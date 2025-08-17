@@ -35,12 +35,12 @@ func (u *userRouteHnadler) SignUpHandler(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	_, err := u.service.SignUp(ctx, authRequest.Username, authRequest.Password)
+	resp, err := u.service.SignUp(ctx, authRequest.Username, authRequest.Password)
 	if err != nil {
 		return err
 	}
 
-	return util.WriteJson(w, 200, nil)
+	return util.WriteJson(w, 200, resp)
 }
 
 func (u *userRouteHnadler) SignInHandler(w http.ResponseWriter, r *http.Request) error {
@@ -52,12 +52,12 @@ func (u *userRouteHnadler) SignInHandler(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	_, err := u.service.SignIn(ctx, authRequest.Username, authRequest.Password)
+	resp, err := u.service.SignIn(ctx, authRequest.Username, authRequest.Password)
 	if err != nil {
 		return err
 	}
 
-	return util.WriteJson(w, 200, nil)
+	return util.WriteJson(w, 200, resp)
 }
 
 func (u *userRouteHnadler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) error {

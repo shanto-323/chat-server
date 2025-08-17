@@ -34,7 +34,7 @@ func NewUserRepository(url string) (UserRepository, error) {
 }
 
 func (g *gormRepository) InsertUser(ctx context.Context, user *model.User) error {
-	return g.db.WithContext(ctx).Create(&user).Error
+	return g.db.WithContext(ctx).Create(user).Error
 }
 
 func (g *gormRepository) GetUser(ctx context.Context, username string) (*model.User, error) {

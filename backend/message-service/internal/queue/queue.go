@@ -11,7 +11,7 @@ type Consumer interface {
 	CreateQueue(queueName string, durable, autoDelete bool) error
 	CreateQueueBinding(name, binding, exchange string) error
 	SendMessage(ctx context.Context, exchange, routingKey string, opt amqp.Publishing) error
-	Consumer(queue, consumer string, autoAck bool) (<-chan amqp.Delivery, error)
+	Consume(queue, consumer string, autoAck bool) (<-chan amqp.Delivery, error)
 }
 
 type rabbitClient struct {
@@ -26,6 +26,20 @@ func RabbitConnection(url string) (*amqp.Connection, error) {
 func NewConsumer(conn *amqp.Connection) (Consumer, error) {
 	ch, err := conn.Channel()
 	if err != nil {
+		return nil, err
+	}
+
+	err = ch.ExchangeDeclare(
+		"message.service", // name
+		"topic",           // type
+		true,              // durable
+		false,             // auto-deleted
+		false,             // internal
+		false,             // no-wait
+		nil,               // arguments
+	)
+	if err != nil {
+		ch.Close() // cleanup the channel if declare fails
 		return nil, err
 	}
 
@@ -55,6 +69,6 @@ func (rc *rabbitClient) SendMessage(ctx context.Context, exchange, routingKey st
 	return rc.ch.PublishWithContext(ctx, exchange, routingKey, true, false, opt)
 }
 
-func (rc *rabbitClient) Consumer(queue, consumer string, autoAck bool) (<-chan amqp.Delivery, error) {
+func (rc *rabbitClient) Consume(queue, consumer string, autoAck bool) (<-chan amqp.Delivery, error) {
 	return rc.ch.Consume(queue, consumer, autoAck, false, false, false, nil)
 }

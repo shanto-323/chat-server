@@ -1,87 +1,95 @@
 package connection
 
 import (
+	"context"
+	"encoding/json"
+	"time"
+
 	"github.com/gorilla/websocket"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/model"
+	"github.com/rabbitmq/amqp091-go"
+	"github.com/segmentio/ksuid"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/connection/model"
 )
 
 type Client struct {
-	id      uint
-	conn    *websocket.Conn
-	MsgPool chan model.MessagePacket
-	manager *Manager
+	ID      string
+	Conn    *websocket.Conn
+	Manager *Manager
+	Cancel  context.CancelFunc
+	Ctx     context.Context
 }
 
-// func NewClient(conn *websocket.Conn, m *Manager) *Client {
-// 	return &Client{
-// 		conn:    conn,
-// 		MsgPool: make(chan model.MessagePacket, 1024),
-// 		manager: m,
-// 	}
-// }
+func NewClient(conn *websocket.Conn, m *Manager) *Client {
+	id := ksuid.New().String()
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Client{
+		ID:      id,
+		Conn:    conn,
+		Manager: m,
+		Cancel:  cancel,
+		Ctx:     ctx,
+	}
+}
 
-// func (c *Client) ReadMsg() {
-// 	defer func() {
-// 		c.manager.wg.Done()
-// 		c.manager.removeClient(c)
-// 	}()
-// 	m := c.manager
+func (c *Client) ReadMsg() {
+	m := c.Manager
+	conn := c.Conn
+	for {
+		select {
+		case <-c.Ctx.Done():
+			return
+		default:
+			{
+				_, payload, err := conn.ReadMessage()
+				if err != nil {
+					m.removeClient(c)
+					conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+					continue
+				}
 
-// 	for {
-// 		select {
-// 		case <-m.Ctx.Done():
-// 			return
-// 		default:
-// 			_, payload, err := c.conn.ReadMessage()
-// 			if err != nil {
-// 				return
-// 			}
+				packet := model.Packet{}
+				if err := json.Unmarshal(payload, &packet); err != nil {
+					conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+					continue
+				}
 
-// 			message, err := m.Event.CreateMessage(payload)
-// 			if err != nil {
-// 				m.Logger.Error(err.Error())
-// 				continue
-// 			}
+				switch packet.Type {
+				case model.TYPE_CHAT:
+					m.Consumer.SendMessage(context.Background(), "message.service", "incomming.message", amqp091.Publishing{
+						ContentType:  "text/plain",
+						DeliveryMode: amqp091.Persistent,
+						Body:         []byte(packet.Data),
+					})
+					conn.WriteMessage(websocket.TextMessage, []byte(packet.Data))
+				case model.TYPE_LIST:
+					for cp := range CLIENT_POOL {
+						conn.WriteMessage(websocket.TextMessage, []byte(cp))
+					}
 
-// 			switch message.MsgType {
-// 			case TYPE_CHAT:
-// 				if err := m.Event.ChatEvent(message); err != nil {
-// 					m.Logger.Error(err.Error())
-// 				}
-// 			case TYPE_LIST:
-// 				m.Logger.Info("List!!")
-// 				if err := m.Event.ListEvent(c, message); err != nil {
-// 					m.Logger.Error(err.Error())
-// 				}
-// 			case TYPE_ALIVE:
-// 				waitTime := 30 * time.Second
-// 				c.conn.SetReadDeadline(time.Now().Add(waitTime))
-// 			}
-// 		}
-// 	}
-// }
+				case model.TYPE_ALIVE:
+					waitTime := 30 * time.Second
+					conn.SetReadDeadline(time.Now().Add(waitTime))
+				}
+			}
+		}
+	}
+}
 
-// func (c *Client) WriteMsg() {
-// 	ticker := time.NewTicker(10 * time.Second)
-// 	defer func() {
-// 		ticker.Stop()
-// 		c.manager.wg.Done()
-// 		c.manager.removeClient(c)
-// 	}()
-// 	m := c.manager
+func (c *Client) WriteMsg() {
+	ticker := time.NewTicker(10 * time.Second)
+	// m := c.Manager
+	conn := c.Conn
 
-// 	for {
-// 		select {
-// 		case <-c.manager.Ctx.Done():
-// 			return
-// 		case msg := <-c.MsgPool:
-// 			m.Event.WriteMsg(c, msg)
-// 		case <-ticker.C:
-// 			if err := c.conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
-// 				m.Logger.Error(err.Error())
-// 				return
-// 			}
-// 			c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-// 		}
-// 	}
-// }
+	for {
+		select {
+		case <-c.Ctx.Done():
+			return
+		case <-ticker.C:
+			if err := conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
+				return
+			}
+		default:
+			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		}
+	}
+}
