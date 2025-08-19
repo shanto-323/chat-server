@@ -17,11 +17,11 @@ type Api interface {
 
 type gorillaApi struct {
 	ipAddr  string
-	chche   cache.RedisClient
+	chche   *cache.RedisService
 	service *database.UserService
 }
 
-func NewApi(port string, r cache.RedisClient, s *database.UserService) Api {
+func NewApi(port string, r *cache.RedisService, s *database.UserService) Api {
 	return &gorillaApi{
 		ipAddr:  fmt.Sprintf(":%s", port),
 		chche:   r,
@@ -54,7 +54,7 @@ func (a *gorillaApi) handleUserRoutes(r *mux.Router) {
 func (a *gorillaApi) handleCacheRoutes(r *mux.Router) {
 	ops := routes.NewCacheRoute(a.chche)
 
-	r.HandleFunc("/client.up/{id}", util.HandleFunc(ops.AddConnectionHandler)).Methods("POST")
-	r.HandleFunc("/client.close/{id}", util.HandleFunc(ops.RemoveConnectionHandler)).Methods("POST")
-	r.HandleFunc("/client.check/{id}", util.HandleFunc(ops.CheckConnectionHandler)).Methods("GET")
+	r.HandleFunc("/client.up}", util.HandleFunc(ops.AddConnectionHandler)).Methods("POST")
+	r.HandleFunc("/client.close", util.HandleFunc(ops.RemoveConnectionHandler)).Methods("POST")
+	r.HandleFunc("/client.get", util.HandleFunc(ops.GetConnectionHandler)).Methods("GET")
 }

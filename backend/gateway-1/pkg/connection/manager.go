@@ -9,10 +9,10 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/client"
-	model "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/client/model"
 	model2 "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/connection/model"
 	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/queue"
+	client "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/remote"
+	model "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/remote/model"
 )
 
 var CLIENT_POOL = map[string]*Client{}

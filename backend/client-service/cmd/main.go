@@ -10,6 +10,7 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/shanto-323/Chat-Server-1/client-service/internal/api"
+	"github.com/shanto-323/Chat-Server-1/client-service/internal/cache"
 	"github.com/shanto-323/Chat-Server-1/client-service/internal/database"
 	"github.com/tinrab/retry"
 )
@@ -27,8 +28,9 @@ func main() {
 	}
 
 	var (
-		err        error
-		repository database.UserRepository
+		err          error
+		repository   database.UserRepository
+		reddisClient cache.RedisClient
 	)
 	retry.ForeverSleep(
 		2*time.Second,
@@ -38,12 +40,19 @@ func main() {
 				slog.Error(err.Error())
 				return err
 			}
+
+			reddisClient, err = cache.NewRedisClient(cfg.ReddisUrl)
+			if err != nil {
+				slog.Error(err.Error())
+				return err
+			}
 			return nil
 		},
 	)
 
 	service := database.NewUserService(repository)
-	api := api.NewApi(cfg.ClientServicePort, nil, service)
+	cache := cache.NewRedisService(reddisClient)
+	api := api.NewApi(cfg.ClientServicePort, cache, service)
 
 	errChan := make(chan error, 1)
 	slog.Info("SERVER RUNNING", "client-service PORT:", cfg.ClientServicePort)

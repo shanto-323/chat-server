@@ -12,13 +12,12 @@ const (
 
 type RedisClient interface {
 	Close()
-	AddConnection(ctx context.Context, key, value string) error
-	CheckConnection(ctx context.Context, key string) error
-	RemoveConnection(ctx context.Context, key string) error
-	SAdd(ctx context.Context, pool ...any) error
-	SRem(ctx context.Context, members ...any) error
-	SMembers(ctx context.Context) ([]string, error)
-	IsMember(ctx context.Context, key string) (bool, error)
+	Insert(ctx context.Context, uid, hkey string) error
+	Remove(ctx context.Context, uid string) error
+	CheckUID(ctx context.Context, uid string) (bool, error)
+	HashSetInsert(ctx context.Context, uid, gateway, session_id string) error
+	HashSetRemove(ctx context.Context, uid string, hashKey string) (int64, error)
+	HashSetGet(ctx context.Context, uid string) (map[string]string, error)
 }
 
 type redisClient struct {
@@ -40,46 +39,48 @@ func (r *redisClient) Close() {
 	r.client.Close()
 }
 
-func (r *redisClient) AddConnection(ctx context.Context, key, value string) error {
-	_, err := r.client.Set(ctx, key, value, 0).Result()
+// USER_ID = uid
+// HASH_KEY = hkey
+// SESSION_ID = session_id
+// GATEWAY_ID = gatekey
+func (r *redisClient) Insert(ctx context.Context, uid, hkey string) error {
+	_, err := r.client.Set(ctx, uid, hkey, 0).Result()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *redisClient) CheckConnection(ctx context.Context, key string) error {
-	_, err := r.client.Get(ctx, key).Result()
+func (r *redisClient) Remove(ctx context.Context, uid string) error {
+	_, err := r.client.Del(ctx, uid).Result()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *redisClient) RemoveConnection(ctx context.Context, key string) error {
-	_, err := r.client.Del(ctx, key).Result()
+func (r *redisClient) CheckUID(ctx context.Context, uid string) (bool, error) {
+	resp, err := r.client.Exists(ctx, uid).Result()
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return resp > 0, nil
 }
 
-func (r *redisClient) SAdd(ctx context.Context, pool ...any) error {
-	_, err := r.client.SAdd(ctx, LIST_KEY, pool...).Result()
+func (r *redisClient) HashSetInsert(ctx context.Context, uid, gateway, session_id string) error {
+	_, err := r.client.HSet(ctx, uid, gateway, session_id).Result()
 	return err
 }
 
-func (r *redisClient) SRem(ctx context.Context, members ...any) error {
-	_, err := r.client.SRem(ctx, LIST_KEY, members...).Result()
-	return err
+func (r *redisClient) HashSetRemove(ctx context.Context, session_id, hashKey string) (int64, error) {
+	size, err := r.client.HLen(ctx, hashKey).Result()
+	if err != nil {
+		return 0, nil
+	}
+	_, err = r.client.HDel(ctx, session_id, hashKey).Result()
+	return size, err
 }
 
-func (r *redisClient) SMembers(ctx context.Context) ([]string, error) {
-	resp, err := r.client.SMembers(ctx, LIST_KEY).Result()
-	return resp, err
-}
-
-func (r *redisClient) IsMember(ctx context.Context, key string) (bool, error) {
-	resp, err := r.client.SIsMember(ctx, LIST_KEY, key).Result()
-	return resp, err
+func (r *redisClient) HashSetGet(ctx context.Context, uid string) (map[string]string, error) {
+	return r.client.HGetAll(ctx, uid).Result()
 }

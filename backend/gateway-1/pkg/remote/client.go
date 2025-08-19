@@ -1,4 +1,4 @@
-package client
+package remote
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/client/model"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/remote/model"
 )
 
 const (
@@ -20,13 +20,13 @@ type UserClient interface {
 	Auth(r *model.UserRequest) (*model.User, error)
 }
 
-type userClient struct {
+type client struct {
 	baseUrl string
 	client  *http.Client
 }
 
 func NewClient() UserClient {
-	return &userClient{
+	return &client{
 		baseUrl: "http://client-service:8081/api/v1/client.service",
 		client: &http.Client{
 			Timeout: 10 * time.Second,
@@ -34,7 +34,7 @@ func NewClient() UserClient {
 	}
 }
 
-func (u *userClient) Auth(request *model.UserRequest) (*model.User, error) {
+func (u *client) Auth(request *model.UserRequest) (*model.User, error) {
 	method := strings.ToUpper(strings.ReplaceAll(request.Method, " ", ""))
 	switch method {
 	case SignUP:
@@ -46,7 +46,7 @@ func (u *userClient) Auth(request *model.UserRequest) (*model.User, error) {
 	return nil, fmt.Errorf("unknown method")
 }
 
-func (u *userClient) singUp(username, password string) (*model.User, error) {
+func (u *client) singUp(username, password string) (*model.User, error) {
 	body, err := json.Marshal(model.UserRequest{
 		Username: username,
 		Password: password,
@@ -73,7 +73,7 @@ func (u *userClient) singUp(username, password string) (*model.User, error) {
 	return nil, fmt.Errorf("denied")
 }
 
-func (u *userClient) singIn(username, password string) (*model.User, error) {
+func (u *client) singIn(username, password string) (*model.User, error) {
 	body, err := json.Marshal(model.UserRequest{
 		Username: username,
 		Password: password,

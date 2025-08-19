@@ -2,10 +2,11 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/shanto-323/Chat-Server-1/client-service/internal/api/model"
 	"github.com/shanto-323/Chat-Server-1/client-service/internal/cache"
 	"github.com/shanto-323/Chat-Server-1/client-service/util"
 )
@@ -13,25 +14,31 @@ import (
 type CacheRoute interface {
 	AddConnectionHandler(w http.ResponseWriter, r *http.Request) error
 	RemoveConnectionHandler(w http.ResponseWriter, r *http.Request) error
-	CheckConnectionHandler(w http.ResponseWriter, r *http.Request) error
+	GetConnectionHandler(w http.ResponseWriter, r *http.Request) error
 }
 
 type cacheRouteHandler struct {
-	cache cache.RedisClient
+	cache *cache.RedisService
 }
 
-func NewCacheRoute(c cache.RedisClient) CacheRoute {
+func NewCacheRoute(c *cache.RedisService) CacheRoute {
 	return &cacheRouteHandler{cache: c}
 }
 
+// USER_ID = uid
+// HASH_KEY = hkey = uid(for now)
+// SESSION_ID = session_id
+// GATEWAY_ID = gatekey
 func (c *cacheRouteHandler) AddConnectionHandler(w http.ResponseWriter, r *http.Request) error {
-	v := mux.Vars(r)
-	id := v["id"]
+	connRequest := model.ConnRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&connRequest); err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	if err := c.cache.AddConnection(ctx, id, "active"); err != nil {
+	if err := c.cache.AddActiveUser(ctx, connRequest.ID, connRequest.ID, connRequest.GatewayId, connRequest.SessionId); err != nil {
 		return err
 	}
 
@@ -39,29 +46,41 @@ func (c *cacheRouteHandler) AddConnectionHandler(w http.ResponseWriter, r *http.
 }
 
 func (c *cacheRouteHandler) RemoveConnectionHandler(w http.ResponseWriter, r *http.Request) error {
-	v := mux.Vars(r)
-	id := v["id"]
+	connRequest := model.ConnRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&connRequest); err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	if err := c.cache.RemoveConnection(ctx, id); err != nil {
+	if err := c.cache.RemoveActiveUser(ctx, connRequest.ID, connRequest.SessionId, connRequest.ID); err != nil {
 		return err
 	}
 
 	return util.WriteJson(w, 200, nil)
 }
 
-func (c *cacheRouteHandler) CheckConnectionHandler(w http.ResponseWriter, r *http.Request) error {
-	v := mux.Vars(r)
-	id := v["id"]
+func (c *cacheRouteHandler) GetConnectionHandler(w http.ResponseWriter, r *http.Request) error {
+	connRequest := model.ConnRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&connRequest); err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	if err := c.cache.CheckConnection(ctx, id); err != nil {
+	activePool, err := c.cache.GetActivePool(ctx, connRequest.ID)
+	if err != nil {
 		return err
 	}
 
-	return util.WriteJson(w, 200, nil)
+	connResponse := model.ConnResponse{
+		ActivePool: activePool,
+	}
+	if err := json.NewEncoder(w).Encode(&connResponse); err != nil {
+		return err
+	}
+
+	return util.WriteJson(w, 200, connResponse)
 }
