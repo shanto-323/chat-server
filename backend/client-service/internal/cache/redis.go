@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -68,19 +69,26 @@ func (r *redisClient) CheckUID(ctx context.Context, uid string) (bool, error) {
 }
 
 func (r *redisClient) HashSetInsert(ctx context.Context, uid, gateway, session_id string) error {
+	uid = r.makeKey(uid)
 	_, err := r.client.HSet(ctx, uid, gateway, session_id).Result()
 	return err
 }
 
 func (r *redisClient) HashSetRemove(ctx context.Context, session_id, hashKey string) (int64, error) {
+	hashKey = r.makeKey(hashKey)
 	size, err := r.client.HLen(ctx, hashKey).Result()
 	if err != nil {
 		return 0, nil
 	}
-	_, err = r.client.HDel(ctx, session_id, hashKey).Result()
+	_, err = r.client.HDel(ctx, hashKey, session_id).Result()
 	return size, err
 }
 
 func (r *redisClient) HashSetGet(ctx context.Context, uid string) (map[string]string, error) {
+	uid = r.makeKey(uid)
 	return r.client.HGetAll(ctx, uid).Result()
+}
+
+func (r *redisClient) makeKey(uid string) string {
+	return fmt.Sprintf("user:%s", uid)
 }

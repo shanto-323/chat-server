@@ -78,9 +78,6 @@ func (c *cacheRouteHandler) GetConnectionHandler(w http.ResponseWriter, r *http.
 	connResponse := model.ConnResponse{
 		ActivePool: activePool,
 	}
-	if err := json.NewEncoder(w).Encode(&connResponse); err != nil {
-		return err
-	}
 
 	return util.WriteJson(w, 200, connResponse)
 }
