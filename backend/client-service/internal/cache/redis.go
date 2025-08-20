@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -17,7 +18,7 @@ type RedisClient interface {
 	Remove(ctx context.Context, uid string) error
 	CheckUID(ctx context.Context, uid string) (bool, error)
 	HashSetInsert(ctx context.Context, uid, gateway, session_id string) error
-	HashSetRemove(ctx context.Context, uid string, hashKey string) (int64, error)
+	HashSetRemove(ctx context.Context, hashKey, session_id string) (int64, error)
 	HashSetGet(ctx context.Context, uid string) (map[string]string, error)
 }
 
@@ -70,16 +71,17 @@ func (r *redisClient) CheckUID(ctx context.Context, uid string) (bool, error) {
 
 func (r *redisClient) HashSetInsert(ctx context.Context, uid, gateway, session_id string) error {
 	uid = r.makeKey(uid)
-	_, err := r.client.HSet(ctx, uid, gateway, session_id).Result()
+	_, err := r.client.HSet(ctx, uid, session_id, gateway).Result()
 	return err
 }
 
-func (r *redisClient) HashSetRemove(ctx context.Context, session_id, hashKey string) (int64, error) {
+func (r *redisClient) HashSetRemove(ctx context.Context, hashKey, session_id string) (int64, error) {
 	hashKey = r.makeKey(hashKey)
 	size, err := r.client.HLen(ctx, hashKey).Result()
 	if err != nil {
 		return 0, nil
 	}
+	slog.Info("KEYS", "HKEY", hashKey, "SESSION_ID", session_id)
 	_, err = r.client.HDel(ctx, hashKey, session_id).Result()
 	return size, err
 }

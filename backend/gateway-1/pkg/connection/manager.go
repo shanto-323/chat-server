@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -18,16 +19,18 @@ import (
 var CLIENT_POOL = map[string]*Client{}
 
 type Manager struct {
-	Consumer   queue.Consumer
-	UserClient client.UserClient
-	mu         *sync.RWMutex
+	Consumer    queue.Consumer
+	UserClient  client.UserClient
+	CacheClient client.CacheClient
+	mu          *sync.RWMutex
 }
 
 func NewManager(ctx context.Context, consumer queue.Consumer) *Manager {
 	return &Manager{
-		Consumer:   consumer,
-		UserClient: client.NewClient(),
-		mu:         &sync.RWMutex{},
+		Consumer:    consumer,
+		UserClient:  client.NewClient(),
+		CacheClient: client.NewCacheClient(),
+		mu:          &sync.RWMutex{},
 	}
 }
 
@@ -54,9 +57,6 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) {
 		}
 		break
 	}
-
-	go m.addClient(conn)
-	// REFACTOR AND REQUEST FOR CACHE
 }
 
 func (m *Manager) auth(conn *websocket.Conn) error {
@@ -72,15 +72,36 @@ func (m *Manager) auth(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
+	if err := m.addCache(conn, resp); err != nil {
+		return err
+	}
+
 	conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("success. Client id : %d", resp.ID)))
 	return nil
 }
 
-func (m *Manager) addClient(conn *websocket.Conn) {
-	c := NewClient(conn, m)
+func (m *Manager) addCache(conn *websocket.Conn, user *model.User) error {
+	userId := strconv.FormatInt(int64(user.ID), 10)
+	c := NewClient(conn, m, userId)
 
+	req := model.ConnRequest{
+		ID:        c.ClientId,
+		SessionId: c.SessionId,
+		GatewayId: "gateway.1",
+	}
+
+	if err := m.CacheClient.AddActiveUser(&req); err != nil {
+		return err
+	}
+
+	go m.addClient(c)
+	return nil
+}
+
+func (m *Manager) addClient(c *Client) {
+	slog.Info("NEW CLIENT", "ID-", c.ClientId, "SESSION_ID", c.SessionId)
 	m.mu.Lock()
-	CLIENT_POOL[c.ID] = c
+	CLIENT_POOL[c.SessionId] = c
 	m.mu.Unlock()
 
 	go c.ReadMsg()
@@ -89,8 +110,19 @@ func (m *Manager) addClient(conn *websocket.Conn) {
 
 func (m *Manager) removeClient(c *Client) {
 	m.mu.Lock()
-	client := CLIENT_POOL[c.ID]
+	client := CLIENT_POOL[c.SessionId]
 	m.mu.Unlock()
+
+	slog.Info("REMOVE CONN", "ID-", c.ClientId, "SESSION_ID", c.SessionId)
+	req := model.ConnRequest{
+		ID:        c.ClientId,
+		SessionId: c.SessionId,
+		GatewayId: "gateway.1",
+	}
+
+	if err := m.CacheClient.RemoveActiveUser(&req); err != nil {
+		slog.Error(err.Error())
+	}
 
 	client.Cancel()
 

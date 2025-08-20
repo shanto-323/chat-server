@@ -12,24 +12,26 @@ import (
 )
 
 type Client struct {
-	ID      string
-	Conn    *websocket.Conn
-	Manager *Manager
-	Cancel  context.CancelFunc
-	Ctx     context.Context
-	MsgChan chan *model.Message
+	ClientId  string
+	SessionId string
+	Conn      *websocket.Conn
+	Manager   *Manager
+	Cancel    context.CancelFunc
+	Ctx       context.Context
+	MsgChan   chan *model.Message
 }
 
-func NewClient(conn *websocket.Conn, m *Manager) *Client {
+func NewClient(conn *websocket.Conn, m *Manager, clientId string) *Client {
 	id := ksuid.New().String()
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		ID:      id,
-		Conn:    conn,
-		Manager: m,
-		Cancel:  cancel,
-		Ctx:     ctx,
-		MsgChan: make(chan *model.Message),
+		ClientId:  clientId,
+		SessionId: id,
+		Conn:      conn,
+		Manager:   m,
+		Cancel:    cancel,
+		Ctx:       ctx,
+		MsgChan:   make(chan *model.Message),
 	}
 }
 

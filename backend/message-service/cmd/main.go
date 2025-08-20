@@ -86,6 +86,7 @@ func main() {
 				slog.Error(err.Error())
 				continue
 			}
+			// CREATE CONSUMER AND PUBLISHER PACKET TYPES
 
 			queue.SendMessage(context.Background(), "message.service", "gateway.1", amqp091.Publishing{
 				ContentType:  "text/plain",

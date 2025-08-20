@@ -58,7 +58,7 @@ func (r *RedisService) RemoveActiveUser(ctx context.Context, uid, session_id, hk
 
 	// HashSetRemove FUNC WILL PRE CALCULATE THE LENGTH AND RETURN THE SIZE AND REMOVE THE VALUE
 	// HASH_SIZE IS SIZE-1
-	size, err := r.client.HashSetRemove(ctx, uid, hkey)
+	size, err := r.client.HashSetRemove(ctx, hkey, session_id)
 	if err != nil {
 		return err
 	}
