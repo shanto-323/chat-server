@@ -33,8 +33,9 @@ services:
       scylla:
         condition: service_healthy
     volumes:
-      - ./backend/pkg/storage/migration:/migrations
-    entrypoint: [ "sh", "-c", "until cqlsh scyllaDb -e 'DESC KEYSPACES'; do echo 'Waiting for ScyllaDB to be ready...'; sleep 5; done; cqlsh scyllaDb -f /migrations/001_keyspace.cql && cqlsh scyllaDb -f /migrations/003_offline_table.cql && cqlsh scyllaDb -f /migrations/002_chat_table.cql " ]
+      - ./message-service/pkg/migrations:/migrations
+      - ./message-service/pkg/script:/script
+    entrypoint: ["/script/migration.sh"]
     restart: "no"
 
   redis:
@@ -67,8 +68,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    volumes:
-      - ./init-rabbitmq.sh:/docker-entrypoint-init.d/init-rabbitmq.sh
     restart: on-failure
 
 ######## SERVICE #######

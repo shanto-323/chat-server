@@ -1,4 +1,4 @@
-package queue
+package broker
 
 import (
 	"context"
@@ -6,7 +6,16 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type Consumer interface {
+const (
+	EXCHANGE_KEY  = "message.service"
+	EXCHANGE_TYPE = "topic"
+
+	MESSAGE_QUEUE = "message.queue"
+
+	ROUTING_KEY_MESSAGE = "incomming.message"
+)
+
+type MessageBroker interface {
 	Close() error
 	CreateQueue(queueName string, durable, autoDelete bool) error
 	CreateQueueBinding(name, binding, exchange string) error
@@ -23,7 +32,7 @@ func RabbitConnection(url string) (*amqp.Connection, error) {
 	return amqp.Dial(url)
 }
 
-func NewConsumer(conn *amqp.Connection) (Consumer, error) {
+func NewMessageBroker(conn *amqp.Connection) (MessageBroker, error) {
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil, err

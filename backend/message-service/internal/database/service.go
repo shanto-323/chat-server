@@ -19,7 +19,7 @@ func NewUserService(repo MessageRepository) *MessageService {
 }
 
 func (m *MessageService) PushMessage(ctx context.Context, c *model.Chat) error {
-	id := m.chatId(c.SenderId, c.ReceiverId)
+	id := m.chatId(c.SenderID, c.ReceiverID)
 
 	return m.repo.InsertMessage(ctx, id, c.Message, c.CreatedAt)
 }
@@ -35,8 +35,8 @@ func (m *MessageService) GetMessage(ctx context.Context, senderId, receiverId ui
 
 	for _, r := range resp {
 		chat := &model.Chat{
-			SenderId:   senderId,
-			ReceiverId: receiverId,
+			SenderID:   senderId,
+			ReceiverID: receiverId,
 			Message:    r,
 		}
 
