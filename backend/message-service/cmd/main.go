@@ -15,6 +15,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/shanto-323/Chat-Server-1/message-service/cmd/model"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/queue"
+	"github.com/shanto-323/Chat-Server-1/message-service/internal/remote"
 	"github.com/tinrab/retry"
 )
 
@@ -75,25 +76,36 @@ func main() {
 				slog.Error(err.Error())
 				continue
 			}
-			message := model.Message{
-				UserId:   packet.ReceiverId,
-				SenderId: packet.SenderId,
-				Messsage: packet.Data,
-			}
-			message.Messsage += " GOT THE MESSAGE!!"
-			body, err := json.Marshal(&message)
+
+			cacheClient := remote.NewCacheClient()
+			resp, err := cacheClient.GetActivePool(packet.ReceiverId)
 			if err != nil {
 				slog.Error(err.Error())
 				continue
 			}
-			// CREATE CONSUMER AND PUBLISHER PACKET TYPES
 
-			queue.SendMessage(context.Background(), "message.service", "gateway.1", amqp091.Publishing{
-				ContentType:  "text/plain",
-				DeliveryMode: amqp091.Persistent,
-				Body:         body,
-			})
-			log.Println(string(m.Body))
+			for id, value := range resp.Message.ActivePool {
+				publishPacket := model.PublishPacket{
+					SessionId: id,
+					Data:      packet.Data,
+				}
+
+				body, err := json.Marshal(&publishPacket)
+				if err != nil {
+					slog.Error(err.Error())
+					continue
+				}
+
+				if err := queue.SendMessage(context.Background(), "message.service", value, amqp091.Publishing{
+					ContentType:  "application/json",
+					DeliveryMode: amqp091.Persistent,
+					Body:         body,
+				}); err != nil {
+					slog.Error(err.Error())
+					continue
+				}
+				log.Println(string(m.Body))
+			}
 		}
 	}()
 

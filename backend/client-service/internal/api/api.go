@@ -56,5 +56,5 @@ func (a *gorillaApi) handleCacheRoutes(r *mux.Router) {
 
 	r.HandleFunc("/client.up", util.HandleFunc(ops.AddConnectionHandler)).Methods("POST")
 	r.HandleFunc("/client.close", util.HandleFunc(ops.RemoveConnectionHandler)).Methods("POST")
-	r.HandleFunc("/client.get", util.HandleFunc(ops.GetConnectionHandler)).Methods("GET")
+	r.HandleFunc("/client.get/{id}", util.HandleFunc(ops.GetConnectionHandler)).Methods("GET")
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/shanto-323/Chat-Server-1/client-service/internal/api/model"
 	"github.com/shanto-323/Chat-Server-1/client-service/internal/cache"
 	"github.com/shanto-323/Chat-Server-1/client-service/util"
@@ -62,15 +63,13 @@ func (c *cacheRouteHandler) RemoveConnectionHandler(w http.ResponseWriter, r *ht
 }
 
 func (c *cacheRouteHandler) GetConnectionHandler(w http.ResponseWriter, r *http.Request) error {
-	connRequest := model.ConnRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&connRequest); err != nil {
-		return err
-	}
+	v := mux.Vars(r)
+	id := v["id"]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	activePool, err := c.cache.GetActivePool(ctx, connRequest.ID)
+	activePool, err := c.cache.GetActivePool(ctx, id)
 	if err != nil {
 		return err
 	}

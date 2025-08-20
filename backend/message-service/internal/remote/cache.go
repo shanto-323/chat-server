@@ -1,16 +1,18 @@
 package remote
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/remote/model"
 )
 
-type CacheClient interface{}
+type CacheClient interface {
+	GetActivePool(id string) (*model.CacheResponse, error)
+}
 
 type cacheClient struct {
 	baseUrl string
@@ -26,23 +28,15 @@ func NewCacheClient() CacheClient {
 	}
 }
 
-func (c *cacheClient) GetActivePool(connRequest *model.ConnRequest) (*model.CacheResponse, error) {
-	url := fmt.Sprintf("%s/cache/client.get", c.baseUrl)
-	body, err := json.Marshal(&connRequest)
-	if err != nil {
-		return nil, err
-	}
+func (c *cacheClient) GetActivePool(id string) (*model.CacheResponse, error) {
+	url := fmt.Sprintf("%s/cache/client.get/%s", c.baseUrl, id)
 
-	req, err := http.NewRequest("GET", url, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Get(url)
 	if err != nil || resp.StatusCode != 200 {
-		return nil, fmt.Errorf("err:%s :%d", err, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("err:%s", string(body))
 	}
+	defer resp.Body.Close()
 
 	cacheResponse := model.CacheResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&cacheResponse); err != nil {

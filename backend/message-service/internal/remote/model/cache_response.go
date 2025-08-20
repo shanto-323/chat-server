@@ -1,5 +1,8 @@
 package model
 
 type CacheResponse struct {
-	ActivePool map[string]string `json:"active_pool"`
+	Status  int `json:"status"`
+	Message struct {
+		ActivePool map[string]string `json:"active_pool"`
+	} `json:"message"`
 }

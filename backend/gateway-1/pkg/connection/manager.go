@@ -99,7 +99,7 @@ func (m *Manager) addCache(conn *websocket.Conn, user *model.User) error {
 }
 
 func (m *Manager) addClient(c *Client) {
-	slog.Info("NEW CLIENT", "ID-", c.ClientId, "SESSION_ID", c.SessionId)
+	slog.Info("NEW CLIENT", "ID", c.ClientId, "SESSION_ID", c.SessionId)
 	m.mu.Lock()
 	CLIENT_POOL[c.SessionId] = c
 	m.mu.Unlock()
@@ -113,7 +113,7 @@ func (m *Manager) removeClient(c *Client) {
 	client := CLIENT_POOL[c.SessionId]
 	m.mu.Unlock()
 
-	slog.Info("REMOVE CONN", "ID-", c.ClientId, "SESSION_ID", c.SessionId)
+	slog.Info("REMOVE CONN", "ID", c.ClientId, "SESSION_ID", c.SessionId)
 	req := model.ConnRequest{
 		ID:        c.ClientId,
 		SessionId: c.SessionId,
@@ -153,18 +153,17 @@ func (m *Manager) sendMessage() error {
 	}
 
 	go func() {
+		slog.Info("SEND MESSAGE RUNNING")
 		for msg := range msgChan {
-			message := model2.Message{}
-			if err := json.Unmarshal(msg.Body, &message); err != nil {
+			packet := model2.ConsumePacket{}
+			if err := json.Unmarshal(msg.Body, &packet); err != nil {
 				slog.Error(err.Error())
 				continue
 			}
-			c := CLIENT_POOL[message.UserId]
+			c := CLIENT_POOL[packet.SessionId]
 
 			m.mu.Lock()
-			// THIS IS ERROR BECAUSE I DIDNT MAP ACTUAL ID WITH CONN. IT SOPPSE TO STORE IN CLIENT-SERVICE WHICH I DID NOT IMPLEMENTED YET.
-			// ALSO NEED A PROPER ERROR HANDLING (i.e CHECK USER IS ALIVE OR NOT)
-			c.MsgChan <- &message
+			c.MsgChan <- packet.Data
 			m.mu.Unlock()
 		}
 	}()
