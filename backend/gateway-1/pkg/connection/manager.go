@@ -154,6 +154,7 @@ func (m *Manager) sendMessage() error {
 
 	go func() {
 		slog.Info("SEND MESSAGE RUNNING")
+		// START CONSUMING MESSAGE REWORK WITH SCYLLA
 		for msg := range msgChan {
 			packet := model2.ConsumePacket{}
 			if err := json.Unmarshal(msg.Body, &packet); err != nil {
@@ -163,7 +164,7 @@ func (m *Manager) sendMessage() error {
 			c := CLIENT_POOL[packet.SessionId]
 
 			m.mu.Lock()
-			c.MsgChan <- packet.Data
+			c.MsgChan <- &packet
 			m.mu.Unlock()
 		}
 	}()

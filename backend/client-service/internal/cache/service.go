@@ -32,7 +32,7 @@ func (r *RedisService) AddActiveUser(ctx context.Context, uid, hkey, gateKey, se
 
 	// USER NOT INSIDE ACTIVE POOL
 	if !exist {
-		if err := r.client.Insert(ctx, uid, hkey); err != nil {
+		if err := r.client.Insert(ctx, uid); err != nil {
 			return err
 		}
 	}
@@ -71,6 +71,10 @@ func (r *RedisService) RemoveActiveUser(ctx context.Context, uid, session_id, hk
 	}
 
 	return nil
+}
+
+func (r *RedisService) GetActiveUsers(ctx context.Context) ([]string, error) {
+	return r.client.AllActiveUsers(ctx)
 }
 
 func (r *RedisService) GetActivePool(ctx context.Context, uid string) (map[string]string, error) {

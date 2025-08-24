@@ -7,6 +7,7 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/broker/model"
+	"github.com/shanto-323/Chat-Server-1/message-service/internal/database"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/remote"
 )
 
@@ -16,11 +17,15 @@ type Publisher interface {
 
 type publisher struct {
 	messageBroker MessageBroker
+	cacheClient   remote.CacheClient
+	service       *database.MessageService
 }
 
-func NewPublisher(broker MessageBroker) Publisher {
+func NewPublisher(broker MessageBroker, service *database.MessageService) Publisher {
 	return &publisher{
 		messageBroker: broker,
+		cacheClient:   remote.NewCacheClient(),
+		service:       service,
 	}
 }
 
@@ -30,19 +35,27 @@ func (p *publisher) Publish(d amqp.Delivery) error {
 		return err
 	}
 
-	cacheClient := remote.NewCacheClient()
-	resp, err := cacheClient.GetActivePool(packet.ReceiverId)
+	switch packet.Type {
+	case model.TYPE_CHAT:
+		p.handleTypeChat(&packet)
+	case model.TYPE_LIST:
+		return p.handleTypeList(packet.ReceiverId)
+	}
+
+	slog.Info("BROKER", "success", packet)
+	return nil
+}
+
+func (p *publisher) brodcast(uid string, payload *model.GatewayPayload) error {
+	resp, err := p.cacheClient.GetActivePool(uid)
 	if err != nil {
 		return err
 	}
 
 	for id, value := range resp.Message.ActivePool {
-		publishPacket := model.GatewayPayload{
-			SessionId: id,
-			Data:      packet.Data,
-		}
+		payload.SessionId = id
 
-		body, err := json.Marshal(&publishPacket)
+		body, err := json.Marshal(payload)
 		if err != nil {
 			return err
 		}
@@ -56,6 +69,41 @@ func (p *publisher) Publish(d amqp.Delivery) error {
 		}
 	}
 
-	slog.Info("BROKER", "success", packet)
+	return nil
+}
+
+func (p *publisher) handleTypeList(uid string) error {
+	resp, err := p.cacheClient.GetAlConnPool()
+	if err != nil {
+		return err
+	}
+
+	payload := model.GatewayPayload{
+		Pool: resp.Message.ConnPool,
+	}
+	return p.brodcast(uid, &payload)
+}
+
+func (p *publisher) handleTypeChat(packet *model.Packet) error {
+	// CHECK IF USER ONLINE
+	resp, err := p.cacheClient.GetActivePool(packet.ReceiverId)
+	if err != nil {
+		return err
+	}
+
+	// USER IS ONLINE // marge in a switch statement
+	offline := true
+	if resp.Status == 200 {
+		offline = false
+		if err := p.brodcast(packet.ReceiverId, &model.GatewayPayload{Data: packet.Data}); err != nil {
+			return err
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := p.service.PushMessage(ctx, packet.SenderId, packet.ReceiverId, packet.Data, offline); err != nil {
+		return err
+	}
 	return nil
 }

@@ -1,8 +1,6 @@
 package broker
 
 import (
-	"context"
-
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -12,13 +10,11 @@ type Consumer interface {
 
 type consumer struct {
 	messageBroker MessageBroker
-	ctx           context.Context
 }
 
-func NewConsumer(ctx context.Context, broker MessageBroker) Consumer {
+func NewConsumer(broker MessageBroker) Consumer {
 	return &consumer{
 		messageBroker: broker,
-		ctx:           ctx,
 	}
 }
 

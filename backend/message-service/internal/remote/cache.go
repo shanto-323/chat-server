@@ -12,6 +12,7 @@ import (
 
 type CacheClient interface {
 	GetActivePool(id string) (*model.CacheResponse, error)
+	GetAlConnPool() (*model.CacheResponseAll, error)
 }
 
 type cacheClient struct {
@@ -44,4 +45,22 @@ func (c *cacheClient) GetActivePool(id string) (*model.CacheResponse, error) {
 	}
 
 	return &cacheResponse, nil
+}
+
+func (c *cacheClient) GetAlConnPool() (*model.CacheResponseAll, error) {
+	url := fmt.Sprintf("%s/cache/client.get", c.baseUrl)
+
+	resp, err := c.client.Get(url)
+	if err != nil || resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("err:%s", string(body))
+	}
+	defer resp.Body.Close()
+
+	CacheResponseAll := model.CacheResponseAll{}
+	if err := json.NewDecoder(resp.Body).Decode(&CacheResponseAll); err != nil {
+		return nil, err
+	}
+
+	return &CacheResponseAll, nil
 }

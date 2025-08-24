@@ -14,12 +14,14 @@ const (
 
 type RedisClient interface {
 	Close()
-	Insert(ctx context.Context, uid, hkey string) error
+	Insert(ctx context.Context, uid string) error
 	Remove(ctx context.Context, uid string) error
 	CheckUID(ctx context.Context, uid string) (bool, error)
-	HashSetInsert(ctx context.Context, uid, gateway, session_id string) error
+	AllActiveUsers(ctx context.Context) ([]string, error)
+
+	HashSetInsert(ctx context.Context, hashKey, gateway, session_id string) error
 	HashSetRemove(ctx context.Context, hashKey, session_id string) (int64, error)
-	HashSetGet(ctx context.Context, uid string) (map[string]string, error)
+	HashSetGet(ctx context.Context, hashKey string) (map[string]string, error)
 }
 
 type redisClient struct {
@@ -45,8 +47,8 @@ func (r *redisClient) Close() {
 // HASH_KEY = hkey
 // SESSION_ID = session_id
 // GATEWAY_ID = gatekey
-func (r *redisClient) Insert(ctx context.Context, uid, hkey string) error {
-	_, err := r.client.Set(ctx, uid, hkey, 0).Result()
+func (r *redisClient) Insert(ctx context.Context, uid string) error {
+	_, err := r.client.SAdd(ctx, LIST_KEY, uid).Result()
 	if err != nil {
 		return err
 	}
@@ -54,7 +56,7 @@ func (r *redisClient) Insert(ctx context.Context, uid, hkey string) error {
 }
 
 func (r *redisClient) Remove(ctx context.Context, uid string) error {
-	_, err := r.client.Del(ctx, uid).Result()
+	_, err := r.client.SRem(ctx, LIST_KEY, uid).Result()
 	if err != nil {
 		return err
 	}
@@ -62,16 +64,20 @@ func (r *redisClient) Remove(ctx context.Context, uid string) error {
 }
 
 func (r *redisClient) CheckUID(ctx context.Context, uid string) (bool, error) {
-	resp, err := r.client.Exists(ctx, uid).Result()
+	resp, err := r.client.SIsMember(ctx, LIST_KEY, uid).Result()
 	if err != nil {
 		return false, err
 	}
-	return resp > 0, nil
+	return resp, nil
 }
 
-func (r *redisClient) HashSetInsert(ctx context.Context, uid, gateway, session_id string) error {
-	uid = r.makeKey(uid)
-	_, err := r.client.HSet(ctx, uid, session_id, gateway).Result()
+func (r *redisClient) AllActiveUsers(ctx context.Context) ([]string, error) {
+	return r.client.SMembers(ctx, LIST_KEY).Result()
+}
+
+func (r *redisClient) HashSetInsert(ctx context.Context, hashKey, gateway, session_id string) error {
+	hashKey = r.makeKey(hashKey)
+	_, err := r.client.HSet(ctx, hashKey, session_id, gateway).Result()
 	return err
 }
 
@@ -86,9 +92,9 @@ func (r *redisClient) HashSetRemove(ctx context.Context, hashKey, session_id str
 	return size, err
 }
 
-func (r *redisClient) HashSetGet(ctx context.Context, uid string) (map[string]string, error) {
-	uid = r.makeKey(uid)
-	return r.client.HGetAll(ctx, uid).Result()
+func (r *redisClient) HashSetGet(ctx context.Context, hashKey string) (map[string]string, error) {
+	hashKey = r.makeKey(hashKey)
+	return r.client.HGetAll(ctx, hashKey).Result()
 }
 
 func (r *redisClient) makeKey(uid string) string {

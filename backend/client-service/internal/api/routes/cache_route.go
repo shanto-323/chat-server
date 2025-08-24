@@ -16,6 +16,7 @@ type CacheRoute interface {
 	AddConnectionHandler(w http.ResponseWriter, r *http.Request) error
 	RemoveConnectionHandler(w http.ResponseWriter, r *http.Request) error
 	GetConnectionHandler(w http.ResponseWriter, r *http.Request) error
+	GetAllConnectionHandler(w http.ResponseWriter, r *http.Request) error
 }
 
 type cacheRouteHandler struct {
@@ -76,6 +77,22 @@ func (c *cacheRouteHandler) GetConnectionHandler(w http.ResponseWriter, r *http.
 
 	connResponse := model.ConnResponse{
 		ActivePool: activePool,
+	}
+
+	return util.WriteJson(w, 200, connResponse)
+}
+
+func (c *cacheRouteHandler) GetAllConnectionHandler(w http.ResponseWriter, r *http.Request) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	connPool, err := c.cache.GetActiveUsers(ctx)
+	if err != nil {
+		return err
+	}
+
+	connResponse := model.AllConnResponse{
+		ConnPool: connPool,
 	}
 
 	return util.WriteJson(w, 200, connResponse)

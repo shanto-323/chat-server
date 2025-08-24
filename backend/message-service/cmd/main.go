@@ -12,6 +12,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/broker"
+	"github.com/shanto-323/Chat-Server-1/message-service/internal/database"
 	"github.com/tinrab/retry"
 )
 
@@ -29,11 +30,18 @@ func main() {
 	var (
 		err  error
 		conn *amqp.Connection
+		repo database.MessageRepository
 	)
 	retry.ForeverSleep(
 		2*time.Second,
 		func(_ int) error {
 			conn, err = broker.RabbitConnection(cfg.RabbitUrl)
+			if err != nil {
+				slog.Error(err.Error())
+				return err
+			}
+
+			repo, err = database.NewUserRepository(cfg.ScyllaUrl)
 			if err != nil {
 				slog.Error(err.Error())
 				return err
@@ -47,20 +55,29 @@ func main() {
 		log.Panic(err)
 	}
 
-	errChan := make(chan error, 1)
 	slog.Info("MESSAGE-SERVICE RUNNING")
 
 	brokerCtx, brokerCancel := context.WithCancel(context.Background())
-	consumer := broker.NewConsumer(brokerCtx, br)
+	consumer := broker.NewConsumer(br)
+
+	errChan := make(chan error, 1)
 	delivery, err := consumer.Consume()
 	if err != nil {
 		errChan <- err
 		slog.Error("MAIN", "consumer", err.Error())
 	}
+	service := database.NewUserService(repo)
 	go func() {
-		for d := range delivery {
-			publisher := broker.NewPublisher(br)
-			publisher.Publish(d)
+		for {
+			select {
+			case <-brokerCtx.Done():
+				return
+			case d := <-delivery:
+				publisher := broker.NewPublisher(br, service)
+				if err := publisher.Publish(d); err != nil {
+					slog.Error(err.Error())
+				}
+			}
 		}
 	}()
 
