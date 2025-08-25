@@ -11,9 +11,10 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/api"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/connection"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/queue"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/api"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/broker"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection"
+
 	"github.com/tinrab/retry"
 )
 
@@ -33,26 +34,28 @@ func main() {
 	var (
 		err  error
 		conn *amqp.Connection
+		br   broker.MessageBroker
 	)
 	retry.ForeverSleep(
 		2*time.Second,
 		func(_ int) error {
-			conn, err = queue.RabbitConnection(cfg.RabbitUrl)
+			conn, err = broker.RabbitConnection(cfg.RabbitUrl)
 			if err != nil {
 				slog.Error(err.Error())
+				return err
+			}
+			br, err = broker.NewMessageBroker(conn)
+			if err != nil {
 				return err
 			}
 			return nil
 		},
 	)
 
-	consumer, err := queue.NewConsumer(conn)
-	if err != nil {
-		slog.Error(err.Error())
-		return
-	}
+	consumer := broker.NewConsumer(br)
+	publisher := broker.NewPublisher(br)
 
-	manager := connection.NewManager(ctx, consumer)
+	manager := connection.NewManager(ctx, publisher, consumer)
 	api := api.NewApi(cfg.GatewayPort, manager)
 
 	stopChan := make(chan os.Signal, 1)

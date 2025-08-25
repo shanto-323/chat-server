@@ -10,26 +10,28 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	model2 "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/connection/model"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/queue"
-	client "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/remote"
-	model "github.com/shanto-323/Chat-Server-1/gateway-1/pkg/remote/model"
+	data "github.com/shanto-323/Chat-Server-1/gateway-1/data/remote"
+	dataModel "github.com/shanto-323/Chat-Server-1/gateway-1/data/remote/model"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/broker"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection/model"
 )
 
-var CLIENT_POOL = map[string]*Client{}
-
 type Manager struct {
-	Consumer    queue.Consumer
-	UserClient  client.UserClient
-	CacheClient client.CacheClient
+	Publisher   broker.Publisher
+	Consumer    broker.Consumer
+	UserClient  data.UserClient
+	CacheClient data.CacheClient
+	ClientPool  map[string]*Client
 	mu          *sync.RWMutex
 }
 
-func NewManager(ctx context.Context, consumer queue.Consumer) *Manager {
+func NewManager(ctx context.Context, p broker.Publisher, c broker.Consumer) *Manager {
 	return &Manager{
-		Consumer:    consumer,
-		UserClient:  client.NewClient(),
-		CacheClient: client.NewCacheClient(),
+		Publisher:   p,
+		Consumer:    c,
+		UserClient:  data.NewClient(),
+		CacheClient: data.NewCacheClient(),
+		ClientPool:  map[string]*Client{},
 		mu:          &sync.RWMutex{},
 	}
 }
@@ -60,7 +62,7 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Manager) auth(conn *websocket.Conn) error {
-	request := model.UserRequest{}
+	request := dataModel.UserRequest{}
 	_, payload, err := conn.ReadMessage()
 	if err != nil {
 		return err
@@ -80,11 +82,11 @@ func (m *Manager) auth(conn *websocket.Conn) error {
 	return nil
 }
 
-func (m *Manager) addCache(conn *websocket.Conn, user *model.User) error {
+func (m *Manager) addCache(conn *websocket.Conn, user *dataModel.User) error {
 	userId := strconv.FormatInt(int64(user.ID), 10)
 	c := NewClient(conn, m, userId)
 
-	req := model.ConnRequest{
+	req := dataModel.ConnRequest{
 		ID:        c.ClientId,
 		SessionId: c.SessionId,
 		GatewayId: "gateway.1",
@@ -101,7 +103,7 @@ func (m *Manager) addCache(conn *websocket.Conn, user *model.User) error {
 func (m *Manager) addClient(c *Client) {
 	slog.Info("NEW CLIENT", "ID", c.ClientId, "SESSION_ID", c.SessionId)
 	m.mu.Lock()
-	CLIENT_POOL[c.SessionId] = c
+	m.ClientPool[c.SessionId] = c
 	m.mu.Unlock()
 
 	go c.ReadMsg()
@@ -110,11 +112,11 @@ func (m *Manager) addClient(c *Client) {
 
 func (m *Manager) removeClient(c *Client) {
 	m.mu.Lock()
-	client := CLIENT_POOL[c.SessionId]
+	client := m.ClientPool[c.SessionId]
 	m.mu.Unlock()
 
 	slog.Info("REMOVE CONN", "ID", c.ClientId, "SESSION_ID", c.SessionId)
-	req := model.ConnRequest{
+	req := dataModel.ConnRequest{
 		ID:        c.ClientId,
 		SessionId: c.SessionId,
 		GatewayId: "gateway.1",
@@ -132,36 +134,23 @@ func (m *Manager) removeClient(c *Client) {
 }
 
 func (m *Manager) sendMessage() error {
-	var err error
-	defer func() {
-		if err != nil {
-			slog.Error(err.Error())
-		}
-	}()
-
-	err = m.Consumer.CreateQueue("message.write", true, false)
-	if err != nil {
-		return err
-	}
-	err = m.Consumer.CreateQueueBinding("message.write", "gateway.1", "message.service")
-	if err != nil {
-		return err
-	}
-	msgChan, err := m.Consumer.Consume("message.write", "", false)
+	consumer, err := m.Consumer.Consume()
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		slog.Info("SEND MESSAGE RUNNING")
-		// START CONSUMING MESSAGE REWORK WITH SCYLLA
-		for msg := range msgChan {
-			packet := model2.ConsumePacket{}
+		for msg := range consumer {
+			packet := model.EventPacket{}
 			if err := json.Unmarshal(msg.Body, &packet); err != nil {
 				slog.Error(err.Error())
 				continue
 			}
-			c := CLIENT_POOL[packet.SessionId]
+
+			c, exists := m.ClientPool[packet.SessionId]
+			if !exists {
+				slog.Error("MANAGER", "User not exist", err.Error())
+			}
 
 			m.mu.Lock()
 			c.MsgChan <- &packet

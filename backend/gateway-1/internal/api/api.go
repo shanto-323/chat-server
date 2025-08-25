@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/connection"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection"
 )
 
 type Api interface {

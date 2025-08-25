@@ -3,8 +3,10 @@ package database
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/database/model"
 )
 
@@ -20,39 +22,49 @@ func NewUserService(repo MessageRepository) *MessageService {
 
 func (m *MessageService) PushMessage(ctx context.Context, senderID, receiverID, message string, offline bool) error {
 	conversation_id := m.conversationIdGenerator(senderID, receiverID)
-	createdAt := time.Now()
-	chat := model.Chat{
-		ConversationID: conversation_id,
-		SenderID:       senderID,
-		ReceiverID:     receiverID,
-		Message:        message,
-		CreatedAt:      createdAt,
-		Offline:        offline,
+	createdAt := time.Now().Add(time.Millisecond)
+
+	chatPacket := model.ChatPacket{
+		SenderID:   senderID,
+		ReceiverID: receiverID,
+		Message:    message,
+		Offline:    offline,
+		CreatedAt:  createdAt,
 	}
 
-	return m.repo.InsertMessage(ctx, &chat)
+	chat := model.Chat{
+		ChatID:         gocql.TimeUUID(),
+		ConversationID: conversation_id,
+		Payload:        chatPacket,
+	}
+
+	if err := m.repo.InsertMessage(ctx, &chat); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (m *MessageService) GetMessage(ctx context.Context, senderId, receiverId string, createdAt time.Time) ([]*model.Chat, error) {
+func (m *MessageService) GetMessage(ctx context.Context, senderId, receiverId string, createdAt time.Time) ([]*model.ChatPacket, error) {
 	conversation_id := m.conversationIdGenerator(senderId, receiverId)
-	var chats []*model.Chat
-
+	createdAt = createdAt.Add(time.Millisecond)
 	resp, err := m.repo.GetMessageFromBucket(ctx, conversation_id, createdAt)
 	if err != nil {
+		slog.Error("SERVICE", "getMessage", err.Error())
 		return nil, err
 	}
 
-	for _, r := range resp {
-		chat := &model.Chat{
-			SenderID:   senderId,
-			ReceiverID: receiverId,
-			Message:    r,
-		}
+	return resp, nil
+}
 
-		chats = append(chats, chat)
+func (m *MessageService) GetLatestMessage(ctx context.Context, senderId, receiverId string) ([]*model.ChatPacket, error) {
+	conversation_id := m.conversationIdGenerator(senderId, receiverId)
+	resp, err := m.repo.GetLatestMessageFromBucket(ctx, conversation_id)
+	if err != nil {
+		slog.Error("SERVICE", "getMessage", err.Error())
+		return nil, err
 	}
 
-	return chats, nil
+	return resp, nil
 }
 
 func (m *MessageService) conversationIdGenerator(id_1, id_2 string) string {

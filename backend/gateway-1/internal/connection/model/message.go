@@ -1,15 +1,9 @@
 package model
 
-import (
-	"time"
+import "time"
 
-	"github.com/gocql/gocql"
-)
-
-type Chat struct {
-	ChatID         gocql.UUID `json:"chat_id"`
-	ConversationID string     `json:"conversation_id"`
-	Payload        ChatPacket `json:"payload"`
+type Messages struct {
+	Messages []ChatPacket `json:"messages"`
 }
 
 type ChatPacket struct {

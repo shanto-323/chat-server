@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -11,7 +13,8 @@ import (
 type MessageRepository interface {
 	Close()
 	InsertMessage(ctx context.Context, chat *model.Chat) error
-	GetMessageFromBucket(ctx context.Context, conversation_id string, createdAt time.Time) ([]string, error)
+	GetMessageFromBucket(ctx context.Context, conversation_id string, createdAt time.Time) ([]*model.ChatPacket, error)
+	GetLatestMessageFromBucket(ctx context.Context, conversation_id string) ([]*model.ChatPacket, error)
 }
 
 type scyllaRepository struct {
@@ -38,40 +41,82 @@ func (s *scyllaRepository) Close() {
 func (s *scyllaRepository) InsertMessage(ctx context.Context, chat *model.Chat) error {
 	query := `
         INSERT INTO chat_history(
-            chat_id, conversation_id, sender_id, receiver_id, message, created_at, offline
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            chat_id, conversation_id, payload , created_at
+        ) VALUES (?, ?, ?, ?)
     `
+
+	// JSON Payload CREATION
+	payload := chat.Payload
+	blob, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
 	return s.session.Query(query,
-		gocql.TimeUUID(),
+		chat.ChatID,
 		chat.ConversationID,
-		chat.SenderID,
-		chat.ReceiverID,
-		chat.Message,
-		chat.CreatedAt,
-		chat.Offline,
+		blob,
+		chat.Payload.CreatedAt,
 	).WithContext(ctx).Exec()
 }
 
-func (s *scyllaRepository) GetMessageFromBucket(ctx context.Context, conversation_id string, createdAt time.Time) ([]string, error) {
+func (s *scyllaRepository) GetMessageFromBucket(ctx context.Context, conversation_id string, createdAt time.Time) ([]*model.ChatPacket, error) {
 	query := `
-		SELECT message
+		SELECT payload
 		FROM chat_history
 		WHERE conversation_id = ?
-		  AND created < ?
-		ORDER BY created DESC
+		  AND created_at < ?
+		ORDER BY created_at DESC
 		LIMIT 10
 	`
 	iter := s.session.Query(query, conversation_id, createdAt).WithContext(ctx).Iter()
 
-	var messages []string
-	var msg string
-	for iter.Scan(&msg) {
-		messages = append(messages, msg)
+	var chatHistory []*model.ChatPacket
+	var payloadBytes []byte
+
+	for iter.Scan(&payloadBytes) {
+		chatPacket := model.ChatPacket{}
+		if err := json.Unmarshal(payloadBytes, &chatPacket); err != nil {
+			slog.Error("REPOSITORY", "unmarshal payload", err.Error())
+			continue
+		}
+
+		chatHistory = append(chatHistory, &chatPacket)
 	}
 
 	if err := iter.Close(); err != nil {
 		return nil, err
 	}
 
-	return messages, nil
+	return chatHistory, nil
+}
+
+func (s *scyllaRepository) GetLatestMessageFromBucket(ctx context.Context, conversation_id string) ([]*model.ChatPacket, error) {
+	query := `
+		SELECT payload
+		FROM chat_history
+		WHERE conversation_id = ?
+		ORDER BY created_at DESC
+		LIMIT 10
+	`
+	iter := s.session.Query(query, conversation_id).WithContext(ctx).Iter()
+
+	var chatHistory []*model.ChatPacket
+	var payloadBytes []byte
+
+	for iter.Scan(&payloadBytes) {
+		chatPacket := model.ChatPacket{}
+		if err := json.Unmarshal(payloadBytes, &chatPacket); err != nil {
+			slog.Error("REPOSITORY", "unmarshal payload", err.Error())
+			continue
+		}
+
+		chatHistory = append(chatHistory, &chatPacket)
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, err
+	}
+
+	return chatHistory, nil
 }

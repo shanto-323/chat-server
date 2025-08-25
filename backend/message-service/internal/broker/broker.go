@@ -39,16 +39,16 @@ func NewMessageBroker(conn *amqp.Connection) (MessageBroker, error) {
 	}
 
 	err = ch.ExchangeDeclare(
-		"message.service", // name
-		"topic",           // type
-		true,              // durable
-		false,             // auto-deleted
-		false,             // internal
-		false,             // no-wait
-		nil,               // arguments
+		"message.service",
+		"topic",
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
-		ch.Close() // cleanup the channel if declare fails
+		ch.Close()
 		return nil, err
 	}
 

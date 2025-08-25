@@ -1,4 +1,4 @@
-package remote
+package data
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/remote/model"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/data/remote/model"
 )
 
 const (

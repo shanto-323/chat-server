@@ -3,12 +3,12 @@ package connection
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/rabbitmq/amqp091-go"
 	"github.com/segmentio/ksuid"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/pkg/connection/model"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection/model"
 )
 
 type Client struct {
@@ -18,7 +18,7 @@ type Client struct {
 	Manager   *Manager
 	Cancel    context.CancelFunc
 	Ctx       context.Context
-	MsgChan   chan *model.ConsumePacket
+	MsgChan   chan *model.EventPacket
 }
 
 func NewClient(conn *websocket.Conn, m *Manager, clientId string) *Client {
@@ -31,7 +31,7 @@ func NewClient(conn *websocket.Conn, m *Manager, clientId string) *Client {
 		Manager:   m,
 		Cancel:    cancel,
 		Ctx:       ctx,
-		MsgChan:   make(chan *model.ConsumePacket, 1024),
+		MsgChan:   make(chan *model.EventPacket, 1024),
 	}
 }
 
@@ -47,7 +47,6 @@ func (c *Client) ReadMsg() {
 				_, payload, err := conn.ReadMessage()
 				if err != nil {
 					m.removeClient(c)
-					conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
 					continue
 				}
 
@@ -57,23 +56,16 @@ func (c *Client) ReadMsg() {
 					continue
 				}
 
-				switch packet.Type {
-				case model.TYPE_CHAT:
-					m.Consumer.SendMessage(context.Background(), "message.service", "incomming.message", amqp091.Publishing{
-						ContentType:  "text/plain",
-						DeliveryMode: amqp091.Persistent,
-						Body:         payload,
-					})
-				case model.TYPE_LIST:
-					m.Consumer.SendMessage(context.Background(), "message.service", "incomming.message", amqp091.Publishing{
-						ContentType:  "text/plain",
-						DeliveryMode: amqp091.Persistent,
-						Body:         payload,
-					})
-				case model.TYPE_ALIVE:
+				if packet.Type == model.TYPE_ALIVE {
 					waitTime := 30 * time.Second
 					conn.SetReadDeadline(time.Now().Add(waitTime))
+				} else {
+					if err := m.Publisher.Publish(payload); err != nil {
+						slog.Error("CLIENT", "err", err.Error())
+						continue
+					}
 				}
+
 			}
 		}
 	}
@@ -81,7 +73,6 @@ func (c *Client) ReadMsg() {
 
 func (c *Client) WriteMsg() {
 	ticker := time.NewTicker(10 * time.Second)
-	// m := c.Manager
 	conn := c.Conn
 
 	for {
@@ -89,10 +80,7 @@ func (c *Client) WriteMsg() {
 		case <-c.Ctx.Done():
 			return
 		case msg := <-c.MsgChan:
-			for _, pool := range msg.Pool {
-				conn.WriteMessage(websocket.TextMessage, []byte("Active user -->"+pool))
-			}
-			conn.WriteMessage(websocket.TextMessage, []byte("incomming --"+msg.Data))
+			slog.Info("INFO", "msg", msg)
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
 				return

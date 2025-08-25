@@ -6,9 +6,9 @@ const (
 	TYPE_CHAT         = "chat"
 	TYPE_CHAT_HISTORY = "chat_history"
 	TYPE_LIST         = "list"
+	TYPE_ALIVE        = "alive"
 )
 
-// THIS IS CONN PACKET
 type Packet struct {
 	Type       string          `json:"type" validate:"required"`
 	SenderId   string          `json:"sender_id" validate:"required"`

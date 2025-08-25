@@ -67,16 +67,17 @@ func main() {
 		slog.Error("MAIN", "consumer", err.Error())
 	}
 	service := database.NewUserService(repo)
+
+	publisher := broker.NewPublisher(br, service)
+	go publisher.Publish(brokerCtx)
+
 	go func() {
 		for {
 			select {
 			case <-brokerCtx.Done():
 				return
 			case d := <-delivery:
-				publisher := broker.NewPublisher(br, service)
-				if err := publisher.Publish(d); err != nil {
-					slog.Error(err.Error())
-				}
+				publisher.Delevery <- d
 			}
 		}
 	}()

@@ -1,10 +1,7 @@
 CREATE TABLE IF NOT EXISTS cluster.chat_history (
-    chat_id UUID,
-    conversation_id TEXT
-    sender_id text,
-    receiver_id text,
-    message text,
+    conversation_id text,
     created_at timestamp,
-    offline boolean,
-    PRIMARY KEY (chat_id, created_at)
+    chat_id UUID,
+    payload blob,
+    PRIMARY KEY (conversation_id, created_at, chat_id)
 ) WITH CLUSTERING ORDER BY (created_at DESC);
