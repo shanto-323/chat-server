@@ -1,10 +1,10 @@
 FROM golang:alpine AS build
 WORKDIR /backend/client-service
 
-COPY ./client-service/go.mod ./client-service/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY ./client-service . 
+COPY . . 
 
 RUN go build -o app ./cmd
 

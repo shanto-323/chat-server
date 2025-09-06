@@ -12,6 +12,7 @@ import (
 	"github.com/shanto-323/Chat-Server-1/client-service/util"
 )
 
+// Those are controllers
 type CacheRoute interface {
 	AddConnectionHandler(w http.ResponseWriter, r *http.Request) error
 	RemoveConnectionHandler(w http.ResponseWriter, r *http.Request) error

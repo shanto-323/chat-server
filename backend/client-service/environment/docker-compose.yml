@@ -1,0 +1,47 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    env_file:
+      - .env
+    ports:
+      - 5432:5432
+    networks:
+      - client-service
+    restart: unless-stopped
+
+  redis:
+    container_name: redis1
+    image: redis:8.2-m01-alpine3.22
+    ports:
+      - 6379:6379
+    networks:
+      - client-service
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -a 123456 ping | grep pong || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  client-service:
+    container_name: client-service
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    networks:
+      - client-service
+    ports:
+      - 8081:8081
+    restart: on-failure
+
+
+
+networks:
+    client-service:
