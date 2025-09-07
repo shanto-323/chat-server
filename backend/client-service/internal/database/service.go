@@ -41,7 +41,7 @@ func (u *UserService) SignIn(ctx context.Context, username, password string) (*m
 		return nil, err
 	}
 
-	if err := hash.CompareWithHash([]byte(resp.Password), []byte(password)); err != nil {
+	if err := hash.CompareWithHash(resp.Password, password); err != nil {
 		return nil, err
 	}
 

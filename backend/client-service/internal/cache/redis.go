@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -87,7 +86,6 @@ func (r *redisClient) HashSetRemove(ctx context.Context, hashKey, session_id str
 	if err != nil {
 		return 0, nil
 	}
-	slog.Info("KEYS", "HKEY", hashKey, "SESSION_ID", session_id)
 	_, err = r.client.HDel(ctx, hashKey, session_id).Result()
 	return size, err
 }
