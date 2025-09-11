@@ -1,0 +1,5 @@
+{"time":"2025-09-07T14:35:57.284042+06:00","level":"INFO","msg":"nornal","context":{"service":"client-service","env":"dev","origin":"test"},"msg":"working"}
+{"time":"2025-09-07T14:35:57.284418+06:00","level":"INFO","msg":"api_metrics","context":{"service":"client-service","env":"dev","origin":"test"},"status":200,"latency_ms":5000,"endpoint":"/api/v1/new_login"}
+{"time":"2025-09-07T14:35:57.28451+06:00","level":"INFO","msg":"db_metrics","context":{"service":"client-service","env":"dev","origin":"test"},"status":200,"latency_ms":5000}
+{"time":"2025-09-07T14:35:57.284547+06:00","level":"ERROR","msg":"normal","context":{"service":"client-service","env":"dev","origin":"test"},"error":"mock error"}
+{"time":"2025-09-07T14:35:57.284567+06:00","level":"WARN","msg":"normal","context":{"service":"client-service","env":"dev","origin":"test"},"warn":"mock warn"}

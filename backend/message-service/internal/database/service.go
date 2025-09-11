@@ -56,7 +56,7 @@ func (m *MessageService) GetMessage(ctx context.Context, senderId, receiverId st
 	return resp, nil
 }
 
-func (m *MessageService) GetLatestMessage(ctx context.Context, senderId, receiverId string) ([]*model.ChatPacket, error) {
+func (m *MessageService) GetLatestMessage(ctx context.Context, senderId, receiverId string) (*model.ChatPacket, error) {
 	conversation_id := m.conversationIdGenerator(senderId, receiverId)
 	resp, err := m.repo.GetLatestMessageFromBucket(ctx, conversation_id)
 	if err != nil {

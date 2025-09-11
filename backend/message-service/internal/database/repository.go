@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -14,7 +15,7 @@ type MessageRepository interface {
 	Close()
 	InsertMessage(ctx context.Context, chat *model.Chat) error
 	GetMessageFromBucket(ctx context.Context, conversation_id string, createdAt time.Time) ([]*model.ChatPacket, error)
-	GetLatestMessageFromBucket(ctx context.Context, conversation_id string) ([]*model.ChatPacket, error)
+	GetLatestMessageFromBucket(ctx context.Context, conversation_id string) (*model.ChatPacket, error)
 }
 
 type scyllaRepository struct {
@@ -91,13 +92,13 @@ func (s *scyllaRepository) GetMessageFromBucket(ctx context.Context, conversatio
 	return chatHistory, nil
 }
 
-func (s *scyllaRepository) GetLatestMessageFromBucket(ctx context.Context, conversation_id string) ([]*model.ChatPacket, error) {
+func (s *scyllaRepository) GetLatestMessageFromBucket(ctx context.Context, conversation_id string) (*model.ChatPacket, error) {
 	query := `
 		SELECT payload
 		FROM chat_history
 		WHERE conversation_id = ?
 		ORDER BY created_at DESC
-		LIMIT 10
+		LIMIT 1
 	`
 	iter := s.session.Query(query, conversation_id).WithContext(ctx).Iter()
 
@@ -118,5 +119,9 @@ func (s *scyllaRepository) GetLatestMessageFromBucket(ctx context.Context, conve
 		return nil, err
 	}
 
-	return chatHistory, nil
+	if chatHistory[0] == nil {
+		return nil, fmt.Errorf("no messages")
+	}
+
+	return chatHistory[0], nil
 }

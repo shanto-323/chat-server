@@ -21,8 +21,9 @@ type Manager struct {
 	Consumer    broker.Consumer
 	UserClient  data.UserClient
 	CacheClient data.CacheClient
-	ClientPool  map[string]*Client
-	mu          *sync.RWMutex
+
+	mu         *sync.RWMutex
+	ClientPool map[string]*Client
 }
 
 func NewManager(ctx context.Context, p broker.Publisher, c broker.Consumer) *Manager {
@@ -31,8 +32,9 @@ func NewManager(ctx context.Context, p broker.Publisher, c broker.Consumer) *Man
 		Consumer:    c,
 		UserClient:  data.NewClient(),
 		CacheClient: data.NewCacheClient(),
-		ClientPool:  map[string]*Client{},
+
 		mu:          &sync.RWMutex{},
+		ClientPool:  map[string]*Client{},
 	}
 }
 
@@ -102,9 +104,13 @@ func (m *Manager) addCache(conn *websocket.Conn, user *dataModel.User) error {
 
 func (m *Manager) addClient(c *Client) {
 	slog.Info("NEW CLIENT", "ID", c.ClientId, "SESSION_ID", c.SessionId)
+
 	m.mu.Lock()
 	m.ClientPool[c.SessionId] = c
 	m.mu.Unlock()
+
+	event := NewEvent(c)
+	c.Event = event
 
 	go c.ReadMsg()
 	go c.WriteMsg()

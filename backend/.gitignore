@@ -1,4 +1,0 @@
-#/.env
-## Can hide .env file. But i am demonstrating,
-## the esiest way to use env file together with docker-compose.yaml.
-## .env -> docker-compose.yaml -> service/main.go

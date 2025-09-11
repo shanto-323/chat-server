@@ -86,7 +86,6 @@ func (p *Publisher) process(d amqp.Delivery) error {
 			if err := json.Unmarshal(packet.Payload, &incommingMessage); err != nil {
 				return err
 			}
-			slog.Info("CHAT", "incommingmsg", incommingMessage)
 
 			// CHECK IF USER ONLINE ONLINE
 			_, offline := p.activePool[packet.ReceiverId]
@@ -97,21 +96,18 @@ func (p *Publisher) process(d amqp.Delivery) error {
 				packet.SenderId,
 				packet.ReceiverId,
 				incommingMessage.Message, // FROM RAW MESSAGE
-				offline,
+				!offline,                 // Offlline = true
 			); err != nil {
 				return err
 			}
 
 			// REALTIME LAST 10 MESSAGE FROM BOTH END
-			messages, err := p.service.GetLatestMessage(context.Background(), packet.SenderId, packet.ReceiverId)
+			message, err := p.service.GetLatestMessage(context.Background(), packet.SenderId, packet.ReceiverId)
 			if err != nil {
 				return err
 			}
-			clientMsg := model.Messages{}
-			for _, m := range messages {
-				clientMsg.Messages = append(clientMsg.Messages, *m)
-			}
-			rawMsg, err := json.Marshal(&clientMsg)
+
+			rawMsg, err := json.Marshal(&message)
 			if err != nil {
 				slog.Error("BROKER", "json", err.Error())
 				return err
@@ -147,6 +143,7 @@ func (p *Publisher) brodcast(id string, eventPacket *model.EventPacket) {
 	resp, err := p.cacheClient.GetActivePool(id)
 	if err != nil {
 		slog.Error("BROKER", "brodcast", err.Error())
+		return
 	}
 
 	for sessionId, gatewayId := range resp.Message.ActivePool {
@@ -159,7 +156,6 @@ func (p *Publisher) brodcast(id string, eventPacket *model.EventPacket) {
 			continue
 		}
 
-		slog.Info("RESP", "info pack", string(eventPacket.Payload))
 		p.messageBroker.SendMessage(context.Background(), EXCHANGE_KEY, gatewayId, amqp.Publishing{
 			ContentType:  "application/json",
 			DeliveryMode: amqp.Persistent,

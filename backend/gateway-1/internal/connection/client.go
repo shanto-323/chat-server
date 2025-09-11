@@ -19,6 +19,7 @@ type Client struct {
 	Cancel    context.CancelFunc
 	Ctx       context.Context
 	MsgChan   chan *model.EventPacket
+	Event     Event // PASS FROM MANAGER
 }
 
 func NewClient(conn *websocket.Conn, m *Manager, clientId string) *Client {
@@ -80,7 +81,7 @@ func (c *Client) WriteMsg() {
 		case <-c.Ctx.Done():
 			return
 		case msg := <-c.MsgChan:
-			slog.Info("INFO", "msg", msg)
+			c.Event.ChatEvent(msg.Payload)
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.PongMessage, []byte{}); err != nil {
 				return
