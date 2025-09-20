@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/gocql/gocql"
+	"github.com/shanto-323/Chat-Server-1/message-service/environment/logs"
 	"github.com/shanto-323/Chat-Server-1/message-service/internal/database/model"
 )
 
@@ -20,9 +20,11 @@ type MessageRepository interface {
 
 type scyllaRepository struct {
 	session *gocql.Session
+	logger  logs.Logger
 }
 
 func NewUserRepository(url string) (MessageRepository, error) {
+	log := logs.NewLogger("repository")
 	cluster := gocql.NewCluster(url)
 	cluster.Port = 9042
 	cluster.Keyspace = "cluster"
@@ -32,6 +34,7 @@ func NewUserRepository(url string) (MessageRepository, error) {
 	}
 	return &scyllaRepository{
 		session: session,
+		logger:  log,
 	}, nil
 }
 
@@ -50,6 +53,7 @@ func (s *scyllaRepository) InsertMessage(ctx context.Context, chat *model.Chat) 
 	payload := chat.Payload
 	blob, err := json.Marshal(payload)
 	if err != nil {
+		s.logger.Error(err)
 		return err
 	}
 
@@ -78,7 +82,7 @@ func (s *scyllaRepository) GetMessageFromBucket(ctx context.Context, conversatio
 	for iter.Scan(&payloadBytes) {
 		chatPacket := model.ChatPacket{}
 		if err := json.Unmarshal(payloadBytes, &chatPacket); err != nil {
-			slog.Error("REPOSITORY", "unmarshal payload", err.Error())
+			s.logger.Error(err)
 			continue
 		}
 
@@ -86,6 +90,7 @@ func (s *scyllaRepository) GetMessageFromBucket(ctx context.Context, conversatio
 	}
 
 	if err := iter.Close(); err != nil {
+		s.logger.Error(err)
 		return nil, err
 	}
 
@@ -108,7 +113,7 @@ func (s *scyllaRepository) GetLatestMessageFromBucket(ctx context.Context, conve
 	for iter.Scan(&payloadBytes) {
 		chatPacket := model.ChatPacket{}
 		if err := json.Unmarshal(payloadBytes, &chatPacket); err != nil {
-			slog.Error("REPOSITORY", "unmarshal payload", err.Error())
+			s.logger.Error(err)
 			continue
 		}
 
@@ -116,10 +121,12 @@ func (s *scyllaRepository) GetLatestMessageFromBucket(ctx context.Context, conve
 	}
 
 	if err := iter.Close(); err != nil {
+		s.logger.Error(err)
 		return nil, err
 	}
 
 	if chatHistory[0] == nil {
+		s.logger.Error(fmt.Errorf("no-message"))
 		return nil, fmt.Errorf("no messages")
 	}
 

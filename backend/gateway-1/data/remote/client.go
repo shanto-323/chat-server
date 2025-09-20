@@ -17,7 +17,7 @@ const (
 )
 
 type UserClient interface {
-	Auth(r *model.UserRequest) (*model.User, error)
+	Auth(payload []byte) (*model.User, error)
 }
 
 type client struct {
@@ -34,7 +34,12 @@ func NewClient() UserClient {
 	}
 }
 
-func (u *client) Auth(request *model.UserRequest) (*model.User, error) {
+func (u *client) Auth(payload []byte) (*model.User, error) {
+	request := model.UserRequest{}
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return nil, err
+	}
+
 	method := strings.ToUpper(strings.ReplaceAll(request.Method, " ", ""))
 	switch method {
 	case SignUP:

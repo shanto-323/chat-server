@@ -77,6 +77,7 @@ func main() {
 			case <-brokerCtx.Done():
 				return
 			case d := <-delivery:
+				slog.Info(d.AppId)
 				publisher.Delevery <- d
 			}
 		}

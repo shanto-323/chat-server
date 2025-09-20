@@ -2,34 +2,67 @@ package connection
 
 import (
 	"encoding/json"
-	"log/slog"
+	"fmt"
 
+	"github.com/gorilla/websocket"
+	"github.com/rabbitmq/amqp091-go"
 	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection/model"
 )
 
 type Event interface {
-	ChatEvent(payload json.RawMessage)
+	SendPayload(conn *websocket.Conn, messageType string, payload json.RawMessage) error
+	AddCache(conn *websocket.Conn, m *Manager, client *Client) error
+	EventProcess(d amqp091.Delivery, m *Manager) error
 }
 
-type event struct {
-	Client *Client
+type event struct{}
+
+func NewEvent() Event {
+	return &event{}
 }
 
-func NewEvent(c *Client) Event {
-	return &event{
-		Client: c,
+func (e *event) SendPayload(conn *websocket.Conn, messageType string, payload json.RawMessage) error {
+	message := model.PacketWrapper{
+		Type:    messageType,
+		Payload: payload,
 	}
+
+	if err := conn.WriteJSON(message); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (e *event) ChatEvent(payload json.RawMessage) {
-	message := model.ChatPacket{}
-	if err := json.Unmarshal(payload, &message); err != nil {
-		slog.Error(err.Error())
-		return
+func (e *event) AddCache(conn *websocket.Conn, m *Manager, client *Client) error {
+	if err := m.CacheClient.AddActiveUser(client.ClientId, client.SessionId); err != nil {
+		return err
 	}
 
-	if err := e.Client.Conn.WriteJSON(message); err != nil {
-		slog.Error(err.Error())
-		return
+	authResponse := model.AuthResponse{
+		Status: true,
 	}
+	payload, err := json.Marshal(&authResponse)
+	if err != nil {
+		return err
+	}
+
+	return m.event.SendPayload(conn, model.TYPE_AUTH, payload)
+}
+
+func (e *event) EventProcess(d amqp091.Delivery, m *Manager) error {
+	packet := model.EventPacket{}
+	if err := json.Unmarshal(d.Body, &packet); err != nil {
+		return err
+	}
+
+	c, exists := m.ClientPool[packet.SessionId]
+	if !exists {
+		return fmt.Errorf("user does not exist")
+	}
+
+	m.mu.Lock()
+	c.MsgChan <- &packet
+	m.mu.Unlock()
+
+	return nil
 }

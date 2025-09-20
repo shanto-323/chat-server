@@ -2,18 +2,13 @@ package connection
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"sync"
 
 	"github.com/gorilla/websocket"
 	data "github.com/shanto-323/Chat-Server-1/gateway-1/data/remote"
-	dataModel "github.com/shanto-323/Chat-Server-1/gateway-1/data/remote/model"
 	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/broker"
-	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection/model"
 )
 
 type Manager struct {
@@ -21,6 +16,7 @@ type Manager struct {
 	Consumer    broker.Consumer
 	UserClient  data.UserClient
 	CacheClient data.CacheClient
+	event       Event
 
 	mu         *sync.RWMutex
 	ClientPool map[string]*Client
@@ -32,9 +28,10 @@ func NewManager(ctx context.Context, p broker.Publisher, c broker.Consumer) *Man
 		Consumer:    c,
 		UserClient:  data.NewClient(),
 		CacheClient: data.NewCacheClient(),
+		event:       NewEvent(),
 
-		mu:          &sync.RWMutex{},
-		ClientPool:  map[string]*Client{},
+		mu:         &sync.RWMutex{},
+		ClientPool: map[string]*Client{},
 	}
 }
 
@@ -49,14 +46,11 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) {
 		slog.Error(err.Error())
 		return
 	}
-	if err := m.sendMessage(); err != nil {
-		slog.Error(err.Error())
-		return
-	}
-	conn.WriteMessage(websocket.TextMessage, []byte("CHAT.APP-1"))
+
+	slog.Info("NEW CONN", "ip-port", conn.RemoteAddr())
 	for {
 		if err := m.auth(conn); err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+			slog.Error(err.Error())
 			continue
 		}
 		break
@@ -64,41 +58,22 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Manager) auth(conn *websocket.Conn) error {
-	request := dataModel.UserRequest{}
 	_, payload, err := conn.ReadMessage()
 	if err != nil {
 		return err
 	}
-	if err := json.Unmarshal(payload, &request); err != nil {
-		return err
-	}
-	resp, err := m.UserClient.Auth(&request)
+
+	resp, err := m.UserClient.Auth(payload)
 	if err != nil {
 		return err
 	}
-	if err := m.addCache(conn, resp); err != nil {
+
+	client := NewClient(conn, m, resp.ID)
+	if err := m.event.AddCache(conn, m, client); err != nil {
 		return err
 	}
 
-	conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("success. Client id : %d", resp.ID)))
-	return nil
-}
-
-func (m *Manager) addCache(conn *websocket.Conn, user *dataModel.User) error {
-	userId := strconv.FormatInt(int64(user.ID), 10)
-	c := NewClient(conn, m, userId)
-
-	req := dataModel.ConnRequest{
-		ID:        c.ClientId,
-		SessionId: c.SessionId,
-		GatewayId: "gateway.1",
-	}
-
-	if err := m.CacheClient.AddActiveUser(&req); err != nil {
-		return err
-	}
-
-	go m.addClient(c)
+	go m.addClient(client)
 	return nil
 }
 
@@ -108,9 +83,6 @@ func (m *Manager) addClient(c *Client) {
 	m.mu.Lock()
 	m.ClientPool[c.SessionId] = c
 	m.mu.Unlock()
-
-	event := NewEvent(c)
-	c.Event = event
 
 	go c.ReadMsg()
 	go c.WriteMsg()
@@ -122,45 +94,31 @@ func (m *Manager) removeClient(c *Client) {
 	m.mu.Unlock()
 
 	slog.Info("REMOVE CONN", "ID", c.ClientId, "SESSION_ID", c.SessionId)
-	req := dataModel.ConnRequest{
-		ID:        c.ClientId,
-		SessionId: c.SessionId,
-		GatewayId: "gateway.1",
-	}
-
-	if err := m.CacheClient.RemoveActiveUser(&req); err != nil {
+	if err := m.CacheClient.RemoveActiveUser(c.ClientId, c.SessionId); err != nil {
 		slog.Error(err.Error())
 	}
 
 	client.Cancel()
 
 	slog.Info("Client Disconnected !!")
-	client.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "bye bye!"))
-	client.Conn.Close()
+	if err := client.Conn.Close(); err != nil {
+		slog.Error(err.Error())
+	}
 }
 
-func (m *Manager) sendMessage() error {
+func (m *Manager) ConsumerStream() error {
 	consumer, err := m.Consumer.Consume()
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		for msg := range consumer {
-			packet := model.EventPacket{}
-			if err := json.Unmarshal(msg.Body, &packet); err != nil {
-				slog.Error(err.Error())
-				continue
-			}
-
-			c, exists := m.ClientPool[packet.SessionId]
-			if !exists {
-				slog.Error("MANAGER", "User not exist", err.Error())
-			}
-
-			m.mu.Lock()
-			c.MsgChan <- &packet
-			m.mu.Unlock()
+		for d := range consumer {
+			go func() {
+				if err := m.event.EventProcess(d, m); err != nil {
+					slog.Error(err.Error())
+				}
+			}()
 		}
 	}()
 	return nil

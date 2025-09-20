@@ -56,6 +56,10 @@ func main() {
 	publisher := broker.NewPublisher(br)
 
 	manager := connection.NewManager(ctx, publisher, consumer)
+	if err := manager.ConsumerStream(); err != nil {
+		slog.Error(err.Error())
+	}
+
 	api := api.NewApi(cfg.GatewayPort, manager)
 
 	stopChan := make(chan os.Signal, 1)

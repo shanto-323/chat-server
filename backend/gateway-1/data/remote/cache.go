@@ -11,8 +11,8 @@ import (
 )
 
 type CacheClient interface {
-	AddActiveUser(connRequest *model.ConnRequest) error
-	RemoveActiveUser(connRequest *model.ConnRequest) error
+	AddActiveUser(uid, sessionId string) error
+	RemoveActiveUser(uid, sessionId string) error
 }
 
 type cacheClient struct {
@@ -29,9 +29,15 @@ func NewCacheClient() CacheClient {
 	}
 }
 
-func (c *cacheClient) AddActiveUser(connRequest *model.ConnRequest) error {
+func (c *cacheClient) AddActiveUser(uid, sessionId string) error {
+	req := model.ConnRequest{
+		ID:        uid,
+		SessionId: sessionId,
+		GatewayId: "gateway.1",
+	}
+
 	url := fmt.Sprintf("%s/cache/client.up", c.baseUrl)
-	body, err := json.Marshal(&connRequest)
+	body, err := json.Marshal(&req)
 	if err != nil {
 		return err
 	}
@@ -44,9 +50,14 @@ func (c *cacheClient) AddActiveUser(connRequest *model.ConnRequest) error {
 	return nil
 }
 
-func (c *cacheClient) RemoveActiveUser(connRequest *model.ConnRequest) error {
+func (c *cacheClient) RemoveActiveUser(uid, sessionId string) error {
+	req := model.ConnRequest{
+		ID:        uid,
+		SessionId: sessionId,
+		GatewayId: "gateway.1",
+	}
 	url := fmt.Sprintf("%s/cache/client.close", c.baseUrl)
-	body, err := json.Marshal(&connRequest)
+	body, err := json.Marshal(&req)
 	if err != nil {
 		return err
 	}
