@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	data "github.com/shanto-323/Chat-Server-1/gateway-1/data/remote"
 	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/broker"
+	"github.com/shanto-323/Chat-Server-1/gateway-1/internal/connection/model"
 )
 
 type Manager struct {
@@ -50,7 +52,17 @@ func (m *Manager) ServerWS(w http.ResponseWriter, r *http.Request) {
 	slog.Info("NEW CONN", "ip-port", conn.RemoteAddr())
 	for {
 		if err := m.auth(conn); err != nil {
-			slog.Error(err.Error())
+			authResponse := model.AuthResponse{
+				Status: false,
+			}
+			payload, err := json.Marshal(&authResponse)
+			if err != nil {
+				slog.Error(err.Error())
+			}
+
+			if err := m.event.SendPayload(conn, model.TYPE_AUTH, payload); err != nil {
+				slog.Error(err.Error())
+			}
 			continue
 		}
 		break

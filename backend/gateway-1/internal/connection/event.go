@@ -40,6 +40,7 @@ func (e *event) AddCache(conn *websocket.Conn, m *Manager, client *Client) error
 
 	authResponse := model.AuthResponse{
 		Status: true,
+		Uid:    client.ClientId,
 	}
 	payload, err := json.Marshal(&authResponse)
 	if err != nil {
@@ -57,7 +58,7 @@ func (e *event) EventProcess(d amqp091.Delivery, m *Manager) error {
 
 	c, exists := m.ClientPool[packet.SessionId]
 	if !exists {
-		return fmt.Errorf("user does not exist")
+		return fmt.Errorf("user does not exist%s", packet.SessionId)
 	}
 
 	m.mu.Lock()

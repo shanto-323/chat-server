@@ -38,6 +38,20 @@ func NewMessageBroker(conn *amqp.Connection) (MessageBroker, error) {
 		return nil, err
 	}
 
+	err = ch.ExchangeDeclare(
+		"message.service",
+		"topic",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		ch.Close()
+		return nil, err
+	}
+
 	return &rabbitClient{
 		conn: conn,
 		ch:   ch,

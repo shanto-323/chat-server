@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -43,26 +44,19 @@ func (u *client) Auth(payload []byte) (*model.User, error) {
 	method := strings.ToUpper(strings.ReplaceAll(request.Method, " ", ""))
 	switch method {
 	case SignUP:
-		return u.singUp(request.Username, request.Password)
+		return u.singUp(request.Credential)
 	case SignIN:
-		return u.singIn(request.Username, request.Password)
+		return u.singIn(request.Credential)
 	}
 
 	return nil, fmt.Errorf("unknown method")
 }
 
-func (u *client) singUp(username, password string) (*model.User, error) {
-	body, err := json.Marshal(model.UserRequest{
-		Username: username,
-		Password: password,
-	})
-	if err != nil {
-		return nil, err
-	}
-
+func (u *client) singUp(payload []byte) (*model.User, error) {
+	slog.Info("Auth Request", "SignUP", string(payload))
 	url := fmt.Sprintf("%s/user/sign.up", u.baseUrl)
 
-	resp, err := u.client.Post(url, "application/json", bytes.NewBuffer(body))
+	resp, err := u.client.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -78,18 +72,11 @@ func (u *client) singUp(username, password string) (*model.User, error) {
 	return nil, fmt.Errorf("denied")
 }
 
-func (u *client) singIn(username, password string) (*model.User, error) {
-	body, err := json.Marshal(model.UserRequest{
-		Username: username,
-		Password: password,
-	})
-	if err != nil {
-		return nil, err
-	}
-
+func (u *client) singIn(payload []byte) (*model.User, error) {
+	slog.Info("Auth Request", "SignUP", string(payload))
 	url := fmt.Sprintf("%s/user/sign.in", u.baseUrl)
 
-	resp, err := u.client.Post(url, "application/json", bytes.NewBuffer(body))
+	resp, err := u.client.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}

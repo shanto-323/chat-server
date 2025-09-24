@@ -27,5 +27,5 @@ func (c *consumer) Consume() (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.messageBroker.Consume(MESSAGE_QUEUE, "", false)
+	return c.messageBroker.Consume(MESSAGE_QUEUE, "", true) // AUTO ACK IS TRUE
 }
